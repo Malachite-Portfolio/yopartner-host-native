@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "780826274730",
+    "project_id": "clarivoice-37739",
+    "storage_bucket": "clarivoice-37739.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780826274730:android:67aa3b878f56967e0799d3",
+        "android_client_info": {
+          "package_name": "com.clarivoice.listener"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjGQ9W8i828UJ36hRI0T7bHSdC6Zz11gE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780826274730:android:9de947a74eeca09a0799d3",
+        "android_client_info": {
+          "package_name": "com.clarivoice.user"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjGQ9W8i828UJ36hRI0T7bHSdC6Zz11gE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780826274730:android:ba55fafacbd8baea0799d3",
+        "android_client_info": {
+          "package_name": "com.yopartner.host"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjGQ9W8i828UJ36hRI0T7bHSdC6Zz11gE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

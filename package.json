@@ -3,10 +3,31 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@react-native-firebase/app": "^24.1.1",
+    "@react-native-firebase/auth": "^24.1.1",
+    "@react-native-firebase/messaging": "^24.1.1",
+    "@react-native-firebase/storage": "^24.1.1",
+    "@react-navigation/bottom-tabs": "^7.18.2",
+    "@react-navigation/native": "^7.3.3",
+    "@react-navigation/native-stack": "^7.17.5",
+    "axios": "^1.18.0",
     "expo": "~56.0.11",
+    "expo-camera": "~56.0.8",
+    "expo-constants": "~56.0.18",
+    "expo-device": "~56.0.4",
+    "expo-document-picker": "~56.0.4",
+    "expo-image-picker": "~56.0.17",
+    "expo-notifications": "~56.0.17",
+    "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
+    "lucide-react-native": "^1.18.0",
     "react": "19.2.3",
-    "react-native": "0.85.3"
+    "react-native": "0.85.3",
+    "react-native-agora": "^4.5.4",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
@@ -14,9 +35,15 @@
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "prebuild:android": "expo prebuild --platform android",
+    "build:android:debug": "cd android && gradlew assembleDebug",
+    "build:android:standalone": "cd android && gradlew assembleStandaloneDebug",
+    "build:android:release-apk": "cd android && gradlew assembleRelease",
+    "build:android:release-aab": "cd android && gradlew bundleRelease"
   },
   "private": true
 }

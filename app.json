@@ -1,20 +1,47 @@
 {
   "expo": {
-    "name": "yopartner-host-native",
+    "name": "YoPartner Host",
     "slug": "yopartner-host-native",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/yopartner-logo.png",
     "userInterfaceStyle": "light",
+    "scheme": "yopartnerhost",
+    "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "@react-native-firebase/messaging",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow YoPartner Host to access your camera for live verification.",
+          "microphonePermission": "Allow YoPartner Host to access your microphone for live verification.",
+          "recordAudioAndroid": true,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "splash": {
+      "image": "./assets/yopartner-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fffdf8"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.yopartner.host",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#fffdf8",
+        "foregroundImage": "./assets/yopartner-logo.png"
       },
       "predictiveBackGestureEnabled": false
     },
