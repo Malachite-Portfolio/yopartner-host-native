@@ -160,6 +160,15 @@ export function DashboardScreen({ navigation }: Props) {
     await load();
   };
 
+  const openIncomingCall = (request: PartnerIncomingRequest) => {
+    if (request.type !== "AUDIO" && request.type !== "VIDEO") return;
+    rootNavigation.navigate("IncomingCall", {
+      requestId: request.id,
+      kind: request.type,
+      callerName: getRequestMemberLabel(request),
+    });
+  };
+
   const joinSession = (session: PartnerActiveSession) => {
     if (session.type === "CHAT") rootNavigation.navigate("ChatThread", { sessionId: session.id });
     else rootNavigation.navigate("Call", { sessionId: session.id, kind: session.type });
@@ -196,7 +205,7 @@ export function DashboardScreen({ navigation }: Props) {
           ) : null}
           <View style={styles.availabilityBlock}>
             <AppButton
-              title={online ? "Pause requests" : "Go online"}
+              title={updating ? "Updating…" : online ? "Go Offline" : "Go Online"}
               onPress={() => void toggleAvailability()}
               loading={updating}
               disabled={!approved || updating || status === "BUSY"}
@@ -237,7 +246,7 @@ export function DashboardScreen({ navigation }: Props) {
           <SectionHeader title="People waiting to talk" caption="Incoming chat, audio, and video requests appear here." />
           {pending.length === 0 ? <EmptyState title="No new requests" message="Stay online to receive new member requests." /> : null}
           {pending.map((request) => (
-            <View key={request.id} style={styles.listItem}>
+              <View key={request.id} style={styles.listItem}>
               <View style={styles.typeIcon}>
                 {request.type === "VIDEO" ? <Video size={17} color={colors.primary} /> : request.type === "AUDIO" ? <Phone size={17} color={colors.primary} /> : <MessageCircle size={17} color={colors.primary} />}
               </View>
@@ -245,8 +254,14 @@ export function DashboardScreen({ navigation }: Props) {
                 <Text style={styles.itemTitle}>{maskPhone(getRequestMemberLabel(request))}</Text>
                 <Text style={styles.itemMeta}>{request.type} - {formatINR(request.expectedRate)}</Text>
               </View>
-              <AppButton title="Accept" onPress={() => void handleAccept(request)} style={styles.smallButton} />
-              <Pressable onPress={() => void handleDecline(request)} style={styles.decline}><Text style={styles.declineText}>Decline</Text></Pressable>
+              {request.type === "CHAT" ? (
+                <>
+                  <AppButton title="Accept" onPress={() => void handleAccept(request)} style={styles.smallButton} />
+                  <Pressable onPress={() => void handleDecline(request)} style={styles.decline}><Text style={styles.declineText}>Decline</Text></Pressable>
+                </>
+              ) : (
+                <AppButton title="View call" onPress={() => openIncomingCall(request)} style={styles.callButton} />
+              )}
             </View>
           ))}
         </AppCard>
@@ -292,6 +307,7 @@ const styles = StyleSheet.create({
   itemTitle: { color: colors.text, fontWeight: "800", fontSize: 14 },
   itemMeta: { color: colors.textMuted, fontSize: 12, marginTop: 3 },
   smallButton: { minHeight: 38, paddingHorizontal: 12 },
+  callButton: { minHeight: 42, paddingHorizontal: 15 },
   join: { borderWidth: 1, borderColor: colors.border, paddingHorizontal: 13, paddingVertical: 9, borderRadius: 12 },
   joinText: { color: colors.text, fontWeight: "800" },
   decline: { paddingHorizontal: 10, paddingVertical: 9, borderRadius: 12, backgroundColor: colors.dangerSoft },

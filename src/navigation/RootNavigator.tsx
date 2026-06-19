@@ -4,11 +4,14 @@ import { BellRing, Home, MessageCircle, UserRound, Wallet } from "lucide-react-n
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../auth/AuthProvider";
+import { useForegroundActivityNotifications } from "../hooks/useForegroundActivityNotifications";
+import { setSignedInNavigationReady } from "./navigationRef";
 import { ApplicationStatusScreen } from "../screens/ApplicationStatusScreen";
 import { CallScreen } from "../screens/CallScreen";
 import { ChatListScreen } from "../screens/ChatListScreen";
 import { ChatThreadScreen } from "../screens/ChatThreadScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
+import { IncomingCallScreen } from "../screens/IncomingCallScreen";
 import { LoginScreen } from "../screens/LoginScreen";
 import { OnboardingScreen } from "../screens/OnboardingScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
@@ -126,6 +129,7 @@ function SignedInNavigator() {
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="ApplicationStatus" component={ApplicationStatusScreen} />
       <Stack.Screen name="ChatThread" component={ChatThreadScreen} />
+      <Stack.Screen name="IncomingCall" component={IncomingCallScreen} />
       <Stack.Screen name="Call" component={CallScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
@@ -134,6 +138,11 @@ function SignedInNavigator() {
 
 export function RootNavigator() {
   const { initializing, signedIn } = useAuth();
+  useForegroundActivityNotifications(signedIn && !initializing);
+  useEffect(() => {
+    setSignedInNavigationReady(signedIn && !initializing);
+    return () => setSignedInNavigationReady(false);
+  }, [initializing, signedIn]);
   if (initializing) return <LoadingGate />;
 
   if (signedIn) return <SignedInNavigator />;

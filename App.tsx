@@ -4,12 +4,13 @@ import { NavigationContainer, type LinkingOptions } from "@react-navigation/nati
 import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/auth/AuthProvider";
+import { flushPendingNotificationRoute, navigationRef, openNotificationRoute } from "./src/navigation/navigationRef";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import type { RootStackParamList } from "./src/navigation/types";
 import { colors } from "./src/theme/colors";
+import { getNotificationRoute, type NotificationData } from "./src/utils/nativeNotifications";
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ["yopartnerhost://"],
@@ -23,7 +24,14 @@ const linking: LinkingOptions<RootStackParamList> = {
         },
       } as never,
       ChatThread: "chat/:sessionId",
-      Call: "call/:kind/:sessionId",
+      IncomingCall: {
+        path: "incoming-call/:kind/:requestId",
+        parse: { kind: (value) => value.toUpperCase() },
+      },
+      Call: {
+        path: "call/:kind/:sessionId",
+        parse: { kind: (value) => value.toUpperCase() },
+      },
       ApplicationStatus: "application-status",
     },
   },
@@ -31,18 +39,28 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App() {
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const route = response.notification.request.content.data?.route;
-      if (typeof route === "string" && route.startsWith("yopartnerhost://")) {
-        void Linking.openURL(route);
-      }
-    });
+    const handledResponses = new Set<string>();
+    const openResponse = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const identifier = response.notification.request.identifier;
+      if (handledResponses.has(identifier)) return;
+      handledResponses.add(identifier);
+      const data = response.notification.request.content.data as NotificationData;
+      const suppliedRoute = data?.route;
+      const route = typeof suppliedRoute === "string" && suppliedRoute.startsWith("yopartnerhost://")
+        ? suppliedRoute
+        : getNotificationRoute(data ?? {});
+      openNotificationRoute(route);
+      void Notifications.clearLastNotificationResponseAsync();
+    };
+    void Notifications.getLastNotificationResponseAsync().then(openResponse);
+    const subscription = Notifications.addNotificationResponseReceivedListener(openResponse);
     return () => subscription.remove();
   }, []);
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer ref={navigationRef} linking={linking} onReady={flushPendingNotificationRoute}>
         <AuthProvider>
           <StatusBar style="dark" />
           <RootNavigator />

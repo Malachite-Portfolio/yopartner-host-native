@@ -11,7 +11,16 @@ import {
   savePartnerExpoPushToken,
   savePartnerFcmToken,
 } from "../auth/tokenStore";
-import { configureAndroidNotificationChannels, displayPartnerNotification } from "../utils/nativeNotifications";
+import { isActiveChatSession, showIncomingCall } from "../navigation/navigationRef";
+import {
+  configureAndroidNotificationChannels,
+  displayPartnerNotification,
+  getNotificationServiceType,
+  getNotificationSessionId,
+  isCallNotification,
+  isChatNotification,
+  type NotificationData,
+} from "../utils/nativeNotifications";
 
 type FcmStatus = "idle" | "registered" | "denied" | "unavailable" | "error";
 type FcmState = { status: FcmStatus; message: string };
@@ -163,6 +172,14 @@ async function startRegistration(generation: number) {
       });
     });
     unsubscribeMessage = messaging().onMessage((remoteMessage) => {
+      const data = (remoteMessage.data ?? {}) as NotificationData;
+      const sessionId = getNotificationSessionId(data);
+      if (sessionId && isChatNotification(data) && isActiveChatSession(sessionId)) return;
+      const serviceType = getNotificationServiceType(data);
+      if (sessionId && serviceType && isCallNotification(data)) {
+        const callerName = typeof data.callerName === "string" ? data.callerName : undefined;
+        showIncomingCall({ requestId: sessionId, kind: serviceType, callerName });
+      }
       void displayPartnerNotification(remoteMessage).catch((error) => {
         if (isDebugBuild()) console.warn("[notifications] foreground display failed", error);
       });

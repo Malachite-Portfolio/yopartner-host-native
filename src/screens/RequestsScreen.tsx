@@ -91,6 +91,15 @@ export function RequestsScreen() {
     await load();
   };
 
+  const openIncomingCall = (request: PartnerIncomingRequest) => {
+    if (request.type !== "AUDIO" && request.type !== "VIDEO") return;
+    navigation.navigate("IncomingCall", {
+      requestId: request.id,
+      kind: request.type,
+      callerName: getRequestMemberLabel(request),
+    });
+  };
+
   const join = (session: PartnerActiveSession) => {
     if (session.type === "CHAT") navigation.navigate("ChatThread", { sessionId: session.id });
     else navigation.navigate("Call", { sessionId: session.id, kind: session.type });
@@ -118,10 +127,14 @@ export function RequestsScreen() {
                   <Text style={styles.title}>{request.type === "CHAT" ? "Incoming chat request" : `Incoming ${request.type.toLowerCase()} call`}</Text>
                   <Text style={styles.meta}>{maskPhone(getRequestMemberLabel(request))} - {formatINR(request.expectedRate)}</Text>
                 </View>
-                <View style={styles.actions}>
-                  <AppButton title="Accept" loading={actionId === request.id} onPress={() => void accept(request)} style={styles.actionButton} />
-                  <AppButton title="Decline" variant="secondary" onPress={() => void decline(request)} style={styles.actionButton} />
-                </View>
+                {request.type === "CHAT" ? (
+                  <View style={styles.actions}>
+                    <AppButton title="Accept" loading={actionId === request.id} onPress={() => void accept(request)} style={styles.actionButton} />
+                    <AppButton title="Decline" variant="secondary" onPress={() => void decline(request)} style={styles.actionButton} />
+                  </View>
+                ) : (
+                  <AppButton title="View incoming call" onPress={() => openIncomingCall(request)} style={styles.callButton} />
+                )}
               </View>
             ))}
           </AppCard>
@@ -167,6 +180,7 @@ const styles = StyleSheet.create({
   meta: { color: colors.textMuted, marginTop: 4, fontSize: 12 },
   actions: { gap: 7 },
   actionButton: { minHeight: 36, paddingHorizontal: 12 },
+  callButton: { minHeight: 44, maxWidth: 142, paddingHorizontal: 14 },
   cardGap: { marginBottom: 14 },
   sectionTitle: { color: colors.text, fontSize: 17, fontWeight: "900", marginBottom: 8 },
   emptyLine: { color: colors.textMuted, lineHeight: 20 },
