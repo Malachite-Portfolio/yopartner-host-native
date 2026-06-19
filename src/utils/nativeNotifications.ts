@@ -39,7 +39,9 @@ export function isChatNotification(data: NotificationData) {
 export function isCallNotification(data: NotificationData) {
   const event = normalizedEvent(data);
   const channel = stringifyValue(data.channel).toLowerCase();
-  return event.includes("CALL") || event === "PARTNER_INCOMING_REQUEST" || channel === "call" || channel === "calls" || channel === CALL_NOTIFICATION_CHANNEL;
+  const serviceType = getNotificationServiceType(data);
+  const incomingCallRequest = event === "PARTNER_INCOMING_REQUEST" && Boolean(serviceType);
+  return event.includes("CALL") || incomingCallRequest || channel === "call" || channel === "calls" || channel === CALL_NOTIFICATION_CHANNEL;
 }
 
 function notificationChannel(data: NotificationData) {
