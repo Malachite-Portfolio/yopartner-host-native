@@ -40,7 +40,7 @@ function isDebugBuild() {
 
 export function DashboardScreen({ navigation }: Props) {
   const rootNavigation = useNavigation<RootNav>();
-  const { phone } = useAuth();
+  const { phone, signedIn } = useAuth();
   const [dashboard, setDashboard] = useState<PartnerDashboardPayload | null>(null);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function DashboardScreen({ navigation }: Props) {
   const active = dashboard?.activeSessions ?? [];
   const online = isRawOnline(dashboard);
   const approved = isApproved(dashboard);
-  const fcm = useFcmRegistration(true);
+  const fcm = useFcmRegistration(signedIn);
 
   const load = useCallback(async () => {
     const [response, profileResponse, media] = await Promise.all([
@@ -176,7 +176,7 @@ export function DashboardScreen({ navigation }: Props) {
         <AppCard style={styles.hero}>
           <View style={styles.heroTop}>
             <Avatar uri={profileImageUrl} name={hostName} size={58} />
-            <View style={{ flex: 1 }}>
+            <View style={styles.heroIdentity}>
               <Text style={styles.welcome} numberOfLines={2} ellipsizeMode="tail">Welcome, {hostName}</Text>
               <Text style={styles.subcopy}>Your partner workspace for safe, respectful conversations.</Text>
             </View>
@@ -273,6 +273,7 @@ export function DashboardScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   hero: { marginBottom: 14 },
   heroTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroIdentity: { flex: 1, minWidth: 0 },
   welcome: { color: colors.text, fontSize: 22, fontWeight: "900", lineHeight: 28, flexShrink: 1 },
   subcopy: { color: colors.textMuted, marginTop: 6, lineHeight: 21 },
   chips: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 14 },

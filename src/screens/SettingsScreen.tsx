@@ -16,14 +16,14 @@ import { colors } from "../theme/colors";
 type Props = NativeStackScreenProps<RootStackParamList, "Settings">;
 
 export function SettingsScreen({ navigation }: Props) {
-  const { logout, phone } = useAuth();
-  const fcm = useFcmRegistration(true);
+  const { logout, phone, signedIn } = useAuth();
+  const fcm = useFcmRegistration(signedIn);
   const version = Constants.expoConfig?.version ?? "1.0.0";
   const notificationLabel =
     fcm.status === "registered"
       ? "Notifications active"
       : fcm.status === "denied"
-        ? "Permission denied"
+        ? "Notifications disabled"
         : fcm.status === "idle"
           ? "Checking"
           : "Unavailable";

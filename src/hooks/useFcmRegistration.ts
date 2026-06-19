@@ -3,12 +3,28 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { registerPartnerFcmToken } from "../api/notifications";
-import { savePartnerExpoPushToken, savePartnerFcmToken } from "../auth/tokenStore";
+import {
+  getPartnerExpoPushToken,
+  getPartnerFcmToken,
+  savePartnerExpoPushToken,
+  savePartnerFcmToken,
+} from "../auth/tokenStore";
 import { configureAndroidNotificationChannels, displayPartnerNotification } from "../utils/nativeNotifications";
 
 type FcmStatus = "idle" | "registered" | "denied" | "unavailable" | "error";
+type FcmState = { status: FcmStatus; message: string };
+
+const IDLE_STATE: FcmState = { status: "idle", message: "" };
+let sharedState: FcmState = IDLE_STATE;
+let activeConsumers = 0;
+let registrationStarted = false;
+let registrationGeneration = 0;
+let unsubscribeTokenRefresh: (() => void) | null = null;
+let unsubscribeMessage: (() => void) | null = null;
+let unsubscribeAppState: (() => void) | null = null;
+const subscribers = new Set<(state: FcmState) => void>();
 
 function isDebugBuild() {
   return Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
@@ -27,95 +43,184 @@ async function requestNotificationPermission() {
   return requested.granted;
 }
 
-export function useFcmRegistration(enabled: boolean) {
-  const [status, setStatus] = useState<FcmStatus>("idle");
-  const [message, setMessage] = useState("");
+function publish(state: FcmState) {
+  sharedState = state;
+  subscribers.forEach((subscriber) => subscriber(state));
+}
 
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
+async function registerTokenWithBackend(token: string) {
+  try {
+    const response = await registerPartnerFcmToken(token);
+    if (response.error && isDebugBuild()) {
+      console.warn("[notifications] FCM registration failed", response.error);
+    }
+  } catch (error) {
+    if (isDebugBuild()) console.warn("[notifications] FCM registration crashed", error);
+  }
+}
 
-    const registerFcmToken = async (token: string) => {
-      try {
-        await savePartnerFcmToken(token);
-        const response = await registerPartnerFcmToken(token);
-        if (response.error && isDebugBuild()) {
-          console.warn("[notifications] FCM registration failed", response.error);
-        }
-      } catch (error) {
-        if (isDebugBuild()) console.warn("[notifications] FCM registration crashed", error);
+async function saveFcmToken(token: string, generation: number) {
+  const normalized = token.trim();
+  if (!normalized) throw new Error("No FCM token was returned.");
+  await savePartnerFcmToken(normalized);
+  if (generation === registrationGeneration) {
+    publish({ status: "registered", message: "Notifications ready." });
+  }
+  void registerTokenWithBackend(normalized);
+}
+
+async function startRegistration(generation: number) {
+  try {
+    if (!Device.isDevice) {
+      publish({ status: "unavailable", message: "Notifications are unavailable on this emulator or simulator." });
+      return;
+    }
+
+    try {
+      await configureAndroidNotificationChannels();
+    } catch (error) {
+      if (isDebugBuild()) console.warn("[notifications] channel setup failed", error);
+    }
+
+    const allowed = await requestNotificationPermission();
+    if (generation !== registrationGeneration) return;
+    if (!allowed) {
+      publish({ status: "denied", message: "Notifications disabled. Enable them in device settings to receive chat and call alerts." });
+      return;
+    }
+
+    try {
+      await Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+    } catch (error) {
+      if (isDebugBuild()) console.warn("[notifications] foreground handler setup failed", error);
+    }
+
+    const [savedExpoToken, savedFcmToken] = await Promise.all([
+      getPartnerExpoPushToken().catch(() => null),
+      getPartnerFcmToken().catch(() => null),
+    ]);
+    let expoToken = savedExpoToken;
+    let fcmToken = savedFcmToken;
+
+    if (fcmToken && generation === registrationGeneration) {
+      publish({ status: "registered", message: "Notifications ready." });
+      void registerTokenWithBackend(fcmToken);
+    }
+
+    try {
+      const projectId = getExpoProjectId();
+      const response = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+      const nextExpoToken = response.data?.trim();
+      if (nextExpoToken) {
+        await savePartnerExpoPushToken(nextExpoToken);
+        expoToken = nextExpoToken;
       }
-    };
+    } catch (error) {
+      if (isDebugBuild()) console.warn("[notifications] Expo push token unavailable", error);
+    }
 
-    void (async () => {
+    if (Platform.OS === "android") {
       try {
-        if (!Device.isDevice) {
-          setStatus("unavailable");
-          setMessage("Notifications require a physical device.");
-          return;
+        const nextFcmToken = await messaging().getToken();
+        const normalizedFcmToken = nextFcmToken.trim();
+        if (!normalizedFcmToken) throw new Error("No FCM token was returned.");
+        if (normalizedFcmToken !== fcmToken) {
+          await saveFcmToken(normalizedFcmToken, generation);
         }
-        await configureAndroidNotificationChannels();
-        await Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldPlaySound: true,
-            shouldSetBadge: false,
-            shouldShowBanner: true,
-            shouldShowList: true,
-          }),
-        });
-        const allowed = await requestNotificationPermission();
-        if (!allowed) {
-          setStatus("denied");
-          setMessage("Enable notifications in device settings to receive chat and call alerts.");
-          return;
-        }
-
-        let hasPushToken = false;
-        try {
-          const projectId = getExpoProjectId();
-          const expoToken = await Notifications.getExpoPushTokenAsync(
-            projectId ? { projectId } : undefined,
-          );
-          await savePartnerExpoPushToken(expoToken.data);
-          hasPushToken = true;
-        } catch (error) {
-          if (isDebugBuild()) console.warn("[notifications] Expo push token unavailable", error);
-        }
-
-        if (Platform.OS === "android") {
-          const fcmToken = await messaging().getToken();
-          hasPushToken = true;
-          void registerFcmToken(fcmToken);
-        }
-
-        if (!hasPushToken) throw new Error("No push token was returned.");
-        if (!cancelled) {
-          setStatus("registered");
-          setMessage("Notifications ready.");
-        }
+        fcmToken = normalizedFcmToken;
       } catch (error) {
-        if (cancelled) return;
-        if (isDebugBuild()) console.warn("[notifications] FCM registration crashed", error);
-        setStatus("error");
-        setMessage("Notifications are unavailable right now. Dashboard updates will still work.");
+        if (isDebugBuild()) console.warn("[notifications] FCM token unavailable", error);
       }
-    })();
+    } else if (expoToken && generation === registrationGeneration) {
+      publish({ status: "registered", message: "Notifications ready." });
+    }
 
-    const unsubscribeTokenRefresh = messaging().onTokenRefresh((token) => {
-      void registerFcmToken(token);
+    if (generation !== registrationGeneration) return;
+    if (Platform.OS === "android" && !fcmToken) {
+      publish({
+        status: "unavailable",
+        message: expoToken
+          ? "Expo push token saved, but Android notification registration is unavailable right now."
+          : "Notifications are unavailable right now. Dashboard updates will still work.",
+      });
+      return;
+    }
+    if (Platform.OS !== "android" && !expoToken) {
+      publish({ status: "unavailable", message: "Notifications are unavailable on this device right now." });
+      return;
+    }
+
+    unsubscribeTokenRefresh = messaging().onTokenRefresh((token) => {
+      void saveFcmToken(token, registrationGeneration).catch((error) => {
+        if (isDebugBuild()) console.warn("[notifications] refreshed token could not be saved", error);
+      });
     });
-    const unsubscribeMessage = messaging().onMessage((remoteMessage) => {
+    unsubscribeMessage = messaging().onMessage((remoteMessage) => {
       void displayPartnerNotification(remoteMessage).catch((error) => {
         if (isDebugBuild()) console.warn("[notifications] foreground display failed", error);
       });
     });
+  } catch (error) {
+    if (generation !== registrationGeneration) return;
+    if (isDebugBuild()) console.warn("[notifications] setup failed", error);
+    publish({ status: "error", message: "Notifications are unavailable right now. Dashboard updates will still work." });
+  }
+}
+
+function ensureRegistration() {
+  if (registrationStarted) return;
+  registrationStarted = true;
+  const generation = ++registrationGeneration;
+  if (!unsubscribeAppState) {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active" || activeConsumers === 0 || sharedState.status === "registered") return;
+      registrationStarted = false;
+      ensureRegistration();
+    });
+    unsubscribeAppState = () => subscription.remove();
+  }
+  void startRegistration(generation);
+}
+
+function stopRegistration() {
+  registrationGeneration += 1;
+  registrationStarted = false;
+  unsubscribeTokenRefresh?.();
+  unsubscribeMessage?.();
+  unsubscribeAppState?.();
+  unsubscribeTokenRefresh = null;
+  unsubscribeMessage = null;
+  unsubscribeAppState = null;
+  sharedState = IDLE_STATE;
+}
+
+export function useFcmRegistration(enabled: boolean) {
+  const [state, setState] = useState<FcmState>(sharedState);
+
+  useEffect(() => {
+    if (!enabled) {
+      setState(IDLE_STATE);
+      return;
+    }
+
+    activeConsumers += 1;
+    subscribers.add(setState);
+    setState(sharedState);
+    ensureRegistration();
 
     return () => {
-      cancelled = true;
-      unsubscribeTokenRefresh();
-      unsubscribeMessage();
+      subscribers.delete(setState);
+      activeConsumers = Math.max(0, activeConsumers - 1);
+      if (activeConsumers === 0) stopRegistration();
     };
   }, [enabled]);
 
-  return { status, message };
+  return state;
 }

@@ -47,6 +47,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fa643584-ddad-45af-993d-6a21eb2b3765"
+      }
+    },
+    "owner": "yo-partner"
   }
 }

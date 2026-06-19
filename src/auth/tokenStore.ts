@@ -52,8 +52,16 @@ export async function savePartnerExpoPushToken(token: string) {
   await SecureStore.setItemAsync(PARTNER_EXPO_PUSH_TOKEN_KEY, token);
 }
 
+export async function getPartnerExpoPushToken() {
+  return normalizeToken(await SecureStore.getItemAsync(PARTNER_EXPO_PUSH_TOKEN_KEY));
+}
+
 export async function savePartnerFcmToken(token: string) {
   await SecureStore.setItemAsync(PARTNER_FCM_TOKEN_KEY, token);
+}
+
+export async function getPartnerFcmToken() {
+  return normalizeToken(await SecureStore.getItemAsync(PARTNER_FCM_TOKEN_KEY));
 }
 
 export async function clearPartnerSession() {
