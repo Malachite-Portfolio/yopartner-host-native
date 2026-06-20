@@ -6,7 +6,6 @@ import {
   Camera,
   Check,
   ChevronDown,
-  ChevronRight,
   ShieldCheck,
   Video,
 } from "lucide-react-native";
@@ -44,19 +43,12 @@ type OnboardingProfile = {
   fullName: string;
   age: string;
   gender: Gender;
-  religion: string;
-  bornCity: string;
-  nationality: string;
-  school: string;
-  college: string;
   qualification: string;
   languagesKnown: string[];
   communicationStyle: string[];
   hobbies: string[];
-  profileTagline: string;
   aboutYourself: string;
   servicesOffered: ServiceType[];
-  categories: string[];
   safetyPlatonicOnly: boolean;
   safetyRespectfulRules: boolean;
   safetyNoOutsidePayments: boolean;
@@ -65,12 +57,11 @@ type OnboardingProfile = {
 
 const stepTitles = [
   "Basic details",
-  "Background",
-  "Languages & comfort style",
+  "Preferences / Languages & comfort style",
   "About your support style",
   "Services & pricing",
-  "KYC documents",
-  "Live video verification",
+  "Verification Documents",
+  "Live Video Verification",
   "Safety agreement",
 ];
 
@@ -78,19 +69,12 @@ const emptyProfile: OnboardingProfile = {
   fullName: "",
   age: "",
   gender: "",
-  religion: "",
-  bornCity: "",
-  nationality: "",
-  school: "",
-  college: "",
   qualification: "",
   languagesKnown: [],
   communicationStyle: [],
   hobbies: [],
-  profileTagline: "",
   aboutYourself: "",
   servicesOffered: [],
-  categories: [],
   safetyPlatonicOnly: false,
   safetyRespectfulRules: false,
   safetyNoOutsidePayments: false,
@@ -98,12 +82,13 @@ const emptyProfile: OnboardingProfile = {
 };
 
 const genderOptions: Gender[] = ["Female", "Male", "Other", "Prefer not to say"];
+const qualificationOptions = ["High School", "Diploma", "Bachelor's Degree", "Master's Degree", "Doctorate", "Other"];
 const languageOptions = ["Hindi", "English", "Bengali", "Tamil", "Telugu", "Marathi", "Gujarati", "Punjabi", "Kannada", "Malayalam", "Urdu"];
 const communicationStyleOptions = [
   "Easy to Communicate",
   "Open minded",
   "Collaborative",
-  "Calm listener",
+  "Calm Listener",
   "Funny",
   "Motivational",
   "Empathetic",
@@ -111,13 +96,11 @@ const communicationStyleOptions = [
   "Professional",
 ];
 const hobbyOptions = ["Dance", "Reading", "Running", "Music", "Poetry", "Art", "Fitness", "Cooking", "Travel", "Movies", "Pets", "Sports", "Writing"];
-const categoryOptions = [
-  "Communication & Emotional Support",
-  "Arts, Music & Creative Expression",
-  "Lifestyle & Daily Support",
-  "Social & Outdoor",
-];
 const serviceOptions: ServiceType[] = ["Chat", "Audio Call", "Video Call"];
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+const MIN_ABOUT_CHARACTERS = 20;
+const MIN_VIDEO_SECONDS = 10;
+const MAX_VIDEO_SECONDS = 20;
 const safetyItems: Array<{ key: keyof Pick<OnboardingProfile, "safetyPlatonicOnly" | "safetyRespectfulRules" | "safetyNoOutsidePayments" | "safetyReviewVerification">; label: string }> = [
   { key: "safetyPlatonicOnly", label: "I understand YoPartner is strictly platonic." },
   { key: "safetyRespectfulRules", label: "I will follow respectful communication rules." },
@@ -127,6 +110,11 @@ const safetyItems: Array<{ key: keyof Pick<OnboardingProfile, "safetyPlatonicOnl
 
 function toggleArrayValue(values: string[], value: string) {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function toggleArrayValueWithLimit(values: string[], value: string, limit: number) {
+  if (values.includes(value)) return values.filter((item) => item !== value);
+  return values.length < limit ? [...values, value] : values;
 }
 
 function inferContentType(fileName: string, fallback = "application/octet-stream") {
@@ -313,17 +301,20 @@ function BottomActionBar({
   total,
   canContinue,
   submitting,
+  onBack,
   onNext,
 }: {
   step: number;
   total: number;
   canContinue: boolean;
   submitting: boolean;
+  onBack: () => void;
   onNext: () => void;
 }) {
   const isSubmit = step === total - 1;
   return (
     <View style={styles.bottomBar}>
+      {step > 0 ? <AppButton title="Back" variant="secondary" disabled={submitting} onPress={onBack} style={styles.bottomButton} /> : null}
       <AppButton
         title={isSubmit ? "Submit for Review" : "Continue"}
         loading={submitting}
@@ -345,6 +336,7 @@ export function OnboardingScreen({ navigation }: Props) {
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<OnboardingProfile>(emptyProfile);
   const [genderOpen, setGenderOpen] = useState(false);
+  const [qualificationOpen, setQualificationOpen] = useState(false);
   const [docs, setDocs] = useState<Record<DocKey, LocalFile | null>>({
     selfie: null,
     aadhaarFront: null,
@@ -361,7 +353,6 @@ export function OnboardingScreen({ navigation }: Props) {
   const [submitDebugMessage, setSubmitDebugMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const requiredDocumentsSelected = Boolean(docs.selfie && docs.aadhaarFront && docs.aadhaarBack);
   const requiredDocumentsUploaded = Boolean(docs.selfie?.upload && docs.aadhaarFront?.upload && docs.aadhaarBack?.upload);
   const documentsUploading = Boolean(docs.selfie?.uploading || docs.aadhaarFront?.uploading || docs.aadhaarBack?.uploading);
   const allSafetyChecked = safetyItems.every((item) => Boolean(profile[item.key]));
@@ -375,24 +366,17 @@ export function OnboardingScreen({ navigation }: Props) {
       ["Full Name", profile.fullName],
       ["Age", profile.age],
       ["Gender", profile.gender],
-      ["Religion", profile.religion],
-      ["Born City", profile.bornCity],
-      ["Nationality", profile.nationality],
-      ["School", profile.school],
-      ["College", profile.college],
       ["Qualification", profile.qualification],
       ["Languages", profile.languagesKnown.join(", ")],
       ["Communication Style", profile.communicationStyle.join(", ")],
       ["Hobbies", profile.hobbies.join(", ")],
-      ["Tagline", profile.profileTagline],
       ["About", profile.aboutYourself],
       ["Services", profile.servicesOffered.join(", ")],
       ["Pricing", "Chat ₹2.5/message, Audio call ₹18/min, Video call ₹24/min"],
-      ["Categories", profile.categories.join(", ")],
-      ["Selfie selected status", docs.selfie ? `Selected (${docs.selfie.fileName})` : "Pending"],
-      ["Aadhaar front selected status", docs.aadhaarFront ? `Selected (${docs.aadhaarFront.fileName})` : "Pending"],
-      ["Aadhaar back selected status", docs.aadhaarBack ? `Selected (${docs.aadhaarBack.fileName})` : "Pending"],
-      ["Live video selected status", liveVideo ? `Selected (${liveVideo.fileName})` : "Pending"],
+      ["Selfie uploaded", toUploadStatus(docs.selfie)],
+      ["Aadhaar front uploaded", toUploadStatus(docs.aadhaarFront)],
+      ["Aadhaar back uploaded", toUploadStatus(docs.aadhaarBack)],
+      ["Live video uploaded", toUploadStatus(liveVideo)],
     ],
     [docs.aadhaarBack, docs.aadhaarFront, docs.selfie, liveVideo, profile],
   );
@@ -401,29 +385,20 @@ export function OnboardingScreen({ navigation }: Props) {
     () =>
       summaryRows.map(([label, value]) => {
         if (label === "Pricing") return [label, "Chat \u20b92.5/message, Audio call \u20b918/min, Video call \u20b924/min"];
-        if (label === "Selfie selected status") return [label, docs.selfie ? `${toUploadStatus(docs.selfie)} (${docs.selfie.fileName})` : "Pending"];
-        if (label === "Aadhaar front selected status") {
-          return [label, docs.aadhaarFront ? `${toUploadStatus(docs.aadhaarFront)} (${docs.aadhaarFront.fileName})` : "Pending"];
-        }
-        if (label === "Aadhaar back selected status") {
-          return [label, docs.aadhaarBack ? `${toUploadStatus(docs.aadhaarBack)} (${docs.aadhaarBack.fileName})` : "Pending"];
-        }
-        if (label === "Live video selected status") return [label, liveVideo ? `${toUploadStatus(liveVideo)} (${liveVideo.fileName})` : "Pending"];
         return [label, value];
       }),
-    [docs.aadhaarBack, docs.aadhaarFront, docs.selfie, liveVideo, summaryRows],
+    [summaryRows],
   );
 
   const canContinue = useMemo(() => {
     if (step === 0) {
-      return Boolean(profile.fullName.trim() && profile.age.trim() && profile.gender && profile.religion.trim() && profile.bornCity.trim() && profile.nationality.trim());
+      return Boolean(profile.fullName.trim() && profile.age.trim() && profile.gender && profile.qualification.trim());
     }
-    if (step === 1) return Boolean(profile.school.trim() && profile.college.trim() && profile.qualification.trim());
-    if (step === 2) return profile.languagesKnown.length > 0 && profile.communicationStyle.length > 0 && profile.hobbies.length > 0;
-    if (step === 3) return Boolean(profile.profileTagline.trim() && aboutCharacters >= 80);
-    if (step === 4) return profile.servicesOffered.length > 0 && profile.categories.length > 0;
-    if (step === 5) return requiredDocumentsUploaded && !documentsUploading;
-    if (step === 6) return liveVideoUploaded && !liveVideo?.uploading;
+    if (step === 1) return profile.languagesKnown.length >= 1 && profile.languagesKnown.length <= 3 && profile.communicationStyle.length === 1 && profile.hobbies.length === 5;
+    if (step === 2) return aboutCharacters >= MIN_ABOUT_CHARACTERS;
+    if (step === 3) return profile.servicesOffered.length > 0;
+    if (step === 4) return requiredDocumentsUploaded && !documentsUploading;
+    if (step === 5) return liveVideoUploaded && !liveVideo?.uploading;
     return allSafetyChecked && requiredDocumentsUploaded && liveVideoUploaded;
   }, [aboutCharacters, allSafetyChecked, documentsUploading, liveVideo?.uploading, liveVideoUploaded, profile, requiredDocumentsUploaded, step]);
 
@@ -432,7 +407,7 @@ export function OnboardingScreen({ navigation }: Props) {
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - recordingStartedAtRef.current) / 1000);
       setRecordingSeconds(elapsed);
-      if (elapsed >= 30 && !stopRecordingRequestedRef.current) {
+      if (elapsed >= MAX_VIDEO_SECONDS && !stopRecordingRequestedRef.current) {
         stopRecordingRequestedRef.current = true;
         cameraRef.current?.stopRecording();
       }
@@ -446,35 +421,26 @@ export function OnboardingScreen({ navigation }: Props) {
       if (!profile.fullName.trim()) nextErrors.fullName = "Full Name is required.";
       if (!profile.age.trim()) nextErrors.age = "Age is required.";
       if (!profile.gender) nextErrors.gender = "Gender is required.";
-      if (!profile.religion.trim()) nextErrors.religion = "Religion is required.";
-      if (!profile.bornCity.trim()) nextErrors.bornCity = "Born City is required.";
-      if (!profile.nationality.trim()) nextErrors.nationality = "Nationality is required.";
-    }
-    if (stepIndex === 1) {
-      if (!profile.school.trim()) nextErrors.school = "School is required.";
-      if (!profile.college.trim()) nextErrors.college = "College is required.";
       if (!profile.qualification.trim()) nextErrors.qualification = "Qualification is required.";
     }
+    if (stepIndex === 1) {
+      if (profile.languagesKnown.length < 1 || profile.languagesKnown.length > 3) nextErrors.languagesKnown = "Select between 1 and 3 languages.";
+      if (profile.communicationStyle.length !== 1) nextErrors.communicationStyle = "Select exactly one communication style.";
+      if (profile.hobbies.length !== 5) nextErrors.hobbies = "Select exactly 5 hobbies.";
+    }
     if (stepIndex === 2) {
-      if (profile.languagesKnown.length === 0) nextErrors.languagesKnown = "Select at least one language.";
-      if (profile.communicationStyle.length === 0) nextErrors.communicationStyle = "Select at least one style.";
-      if (profile.hobbies.length === 0) nextErrors.hobbies = "Select at least one hobby.";
+      if (aboutCharacters < MIN_ABOUT_CHARACTERS) nextErrors.aboutYourself = `Tell us about yourself in at least ${MIN_ABOUT_CHARACTERS} characters.`;
     }
     if (stepIndex === 3) {
-      if (!profile.profileTagline.trim()) nextErrors.profileTagline = "Profile Tagline is required.";
-      if (aboutCharacters < 80) nextErrors.aboutYourself = "About Yourself must be at least 80 characters.";
-    }
-    if (stepIndex === 4) {
       if (profile.servicesOffered.length === 0) nextErrors.servicesOffered = "Select at least one service.";
-      if (profile.categories.length === 0) nextErrors.categories = "Select at least one category.";
     }
-    if (stepIndex === 5 && !requiredDocumentsUploaded) {
+    if (stepIndex === 4 && !requiredDocumentsUploaded) {
       nextErrors.documents = "Selfie, Aadhaar front, and Aadhaar back must be uploaded before continuing.";
     }
-    if (stepIndex === 6 && !liveVideoUploaded) {
+    if (stepIndex === 5 && !liveVideoUploaded) {
       nextErrors.liveVideo = "Please record and upload your live verification video before continuing.";
     }
-    if (stepIndex === 7) {
+    if (stepIndex === 6) {
       if (!allSafetyChecked) nextErrors.base = "Please agree to all safety checklist items.";
       if (!requiredDocumentsUploaded) nextErrors.documents = "Please upload all required KYC documents.";
       if (!liveVideoUploaded) nextErrors.liveVideo = "Please record and upload live video verification.";
@@ -513,6 +479,10 @@ export function OnboardingScreen({ navigation }: Props) {
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
+    if (asset.size && asset.size > MAX_DOCUMENT_BYTES) {
+      setErrors({ documents: "Each document must be 5 MB or smaller." });
+      return;
+    }
     const file: NativeKycFile = {
       uri: asset.uri,
       fileName: asset.name || `${key}.jpg`,
@@ -557,7 +527,7 @@ export function OnboardingScreen({ navigation }: Props) {
 
   const startCameraRecording = async (camera: CameraView) => {
     const recordingOptions = {
-      maxDuration: 30,
+      maxDuration: MAX_VIDEO_SECONDS,
       maxFileSize: 50 * 1024 * 1024,
     };
     let recording: Promise<{ uri: string } | undefined> | undefined = camera.recordAsync(recordingOptions);
@@ -613,6 +583,11 @@ export function OnboardingScreen({ navigation }: Props) {
       setIsRecordingLiveVideo(false);
       if (!result?.uri) {
         throw new Error("Camera recording completed without a file URI.");
+      }
+      if (seconds < MIN_VIDEO_SECONDS) {
+        setPermissionState("Camera and microphone ready.");
+        setErrors({ liveVideo: `Please record for at least ${MIN_VIDEO_SECONDS} seconds.` });
+        return;
       }
       setPermissionState("Recording saved. Uploading...");
       const fileName = `live-verification-${Date.now()}.mp4`;
@@ -726,19 +701,20 @@ export function OnboardingScreen({ navigation }: Props) {
     fullName: profile.fullName.trim(),
     age: Number(profile.age) || 0,
     gender: profile.gender,
-    religion: profile.religion.trim(),
-    bornCity: profile.bornCity.trim(),
-    nationality: profile.nationality.trim(),
-    school: profile.school.trim(),
-    college: profile.college.trim(),
+    // Compatibility mapping: these legacy backend fields are intentionally hidden from the seven-step native UI.
+    religion: "Not specified",
+    bornCity: "Not specified",
+    nationality: "Indian",
+    school: "Not provided",
+    college: "Not provided",
     qualification: profile.qualification.trim(),
     languagesKnown: profile.languagesKnown,
     communicationStyle: profile.communicationStyle,
     hobbies: profile.hobbies,
-    profileTagline: profile.profileTagline.trim(),
+    profileTagline: `${profile.fullName.trim()} - supportive YoPartner host`,
     aboutYourself: profile.aboutYourself.trim(),
     servicesOffered: profile.servicesOffered.map(normalizeServiceForBackend),
-    categories: profile.categories,
+    categories: ["Communication & Emotional Support"],
     safetyChecklist: safetyItems.filter((item) => profile[item.key]).map((item) => item.label),
     selfieUploaded: true,
     selfieFileName: uploads.selfie.fileName,
@@ -761,19 +737,19 @@ export function OnboardingScreen({ navigation }: Props) {
   });
 
   const handleSubmit = async () => {
-    const stepErrors = validateStep(7);
+    const stepErrors = validateStep(6);
     setErrors(stepErrors);
     setSubmitMessage("");
     setSubmitDebugMessage("");
     if (Object.keys(stepErrors).length > 0) return;
 
     if (!docs.selfie || !docs.aadhaarFront || !docs.aadhaarBack) {
-      setStep(5);
+      setStep(4);
       setErrors({ documents: "Please select all required KYC documents." });
       return;
     }
     if (!liveVideo) {
-      setStep(6);
+      setStep(5);
       setErrors({ liveVideo: "Please record or select live video verification." });
       return;
     }
@@ -825,7 +801,7 @@ export function OnboardingScreen({ navigation }: Props) {
               error={errors.age}
             />
             <View style={styles.field}>
-              <Text style={styles.label}>Gender dropdown</Text>
+              <Text style={styles.label}>Gender</Text>
               <Pressable style={[styles.input, styles.dropdown]} onPress={() => setGenderOpen((current) => !current)}>
                 <Text style={[styles.dropdownValue, !profile.gender && styles.placeholder]}>{profile.gender || "Select gender"}</Text>
                 <ChevronDown size={18} color={colors.textMuted} />
@@ -848,9 +824,30 @@ export function OnboardingScreen({ navigation }: Props) {
               ) : null}
               {errors.gender ? <Text style={styles.errorText}>{errors.gender}</Text> : null}
             </View>
-            <TextInputField label="Religion" value={profile.religion} onChangeText={(value) => setProfile((current) => ({ ...current, religion: value }))} error={errors.religion} />
-            <TextInputField label="Born City" value={profile.bornCity} onChangeText={(value) => setProfile((current) => ({ ...current, bornCity: value }))} error={errors.bornCity} />
-            <TextInputField label="Nationality" value={profile.nationality} onChangeText={(value) => setProfile((current) => ({ ...current, nationality: value }))} error={errors.nationality} />
+            <View style={styles.field}>
+              <Text style={styles.label}>Qualification</Text>
+              <Pressable style={[styles.input, styles.dropdown]} onPress={() => setQualificationOpen((current) => !current)}>
+                <Text style={[styles.dropdownValue, !profile.qualification && styles.placeholder]}>{profile.qualification || "Select qualification"}</Text>
+                <ChevronDown size={18} color={colors.textMuted} />
+              </Pressable>
+              {qualificationOpen ? (
+                <View style={styles.dropdownMenu}>
+                  {qualificationOptions.map((option) => (
+                    <Pressable
+                      key={option}
+                      style={styles.dropdownOption}
+                      onPress={() => {
+                        setProfile((current) => ({ ...current, qualification: option }));
+                        setQualificationOpen(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownOptionText}>{option}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {errors.qualification ? <Text style={styles.errorText}>{errors.qualification}</Text> : null}
+            </View>
           </View>
         </OnboardingCard>
       );
@@ -859,9 +856,18 @@ export function OnboardingScreen({ navigation }: Props) {
     if (step === 1) {
       return (
         <OnboardingCard>
-          <TextInputField label="School" value={profile.school} onChangeText={(value) => setProfile((current) => ({ ...current, school: value }))} error={errors.school} />
-          <TextInputField label="College" value={profile.college} onChangeText={(value) => setProfile((current) => ({ ...current, college: value }))} error={errors.college} />
-          <TextInputField label="Qualification" value={profile.qualification} onChangeText={(value) => setProfile((current) => ({ ...current, qualification: value }))} error={errors.qualification} />
+          <Text style={styles.groupTitle}>Languages Known</Text>
+          <Text style={styles.selectionHint}>Select 1 to 3 languages ({profile.languagesKnown.length}/3)</Text>
+          <ChipSelector options={languageOptions} values={profile.languagesKnown} onToggle={(value) => setProfile((current) => ({ ...current, languagesKnown: toggleArrayValueWithLimit(current.languagesKnown, value, 3) }))} />
+          {errors.languagesKnown ? <Text style={styles.errorText}>{errors.languagesKnown}</Text> : null}
+          <Text style={styles.groupTitle}>Communication Style</Text>
+          <Text style={styles.selectionHint}>Select exactly one</Text>
+          <ChipSelector options={communicationStyleOptions} values={profile.communicationStyle} onToggle={(value) => setProfile((current) => ({ ...current, communicationStyle: [value] }))} />
+          {errors.communicationStyle ? <Text style={styles.errorText}>{errors.communicationStyle}</Text> : null}
+          <Text style={styles.groupTitle}>Hobbies</Text>
+          <Text style={styles.selectionHint}>Select exactly 5 hobbies ({profile.hobbies.length}/5)</Text>
+          <ChipSelector options={hobbyOptions} values={profile.hobbies} onToggle={(value) => setProfile((current) => ({ ...current, hobbies: toggleArrayValueWithLimit(current.hobbies, value, 5) }))} />
+          {errors.hobbies ? <Text style={styles.errorText}>{errors.hobbies}</Text> : null}
         </OnboardingCard>
       );
     }
@@ -869,23 +875,6 @@ export function OnboardingScreen({ navigation }: Props) {
     if (step === 2) {
       return (
         <OnboardingCard>
-          <Text style={styles.groupTitle}>Languages Known</Text>
-          <ChipSelector options={languageOptions} values={profile.languagesKnown} onToggle={(value) => setProfile((current) => ({ ...current, languagesKnown: toggleArrayValue(current.languagesKnown, value) }))} />
-          {errors.languagesKnown ? <Text style={styles.errorText}>{errors.languagesKnown}</Text> : null}
-          <Text style={styles.groupTitle}>Communication Style</Text>
-          <ChipSelector options={communicationStyleOptions} values={profile.communicationStyle} onToggle={(value) => setProfile((current) => ({ ...current, communicationStyle: toggleArrayValue(current.communicationStyle, value) }))} />
-          {errors.communicationStyle ? <Text style={styles.errorText}>{errors.communicationStyle}</Text> : null}
-          <Text style={styles.groupTitle}>Hobbies</Text>
-          <ChipSelector options={hobbyOptions} values={profile.hobbies} onToggle={(value) => setProfile((current) => ({ ...current, hobbies: toggleArrayValue(current.hobbies, value) }))} />
-          {errors.hobbies ? <Text style={styles.errorText}>{errors.hobbies}</Text> : null}
-        </OnboardingCard>
-      );
-    }
-
-    if (step === 3) {
-      return (
-        <OnboardingCard>
-          <TextInputField label="Profile Tagline" value={profile.profileTagline} onChangeText={(value) => setProfile((current) => ({ ...current, profileTagline: value }))} error={errors.profileTagline} />
           <TextInputField
             label="About Yourself"
             value={profile.aboutYourself}
@@ -893,12 +882,12 @@ export function OnboardingScreen({ navigation }: Props) {
             multiline
             error={errors.aboutYourself}
           />
-          <Text style={[styles.counter, aboutCharacters >= 80 && styles.counterComplete]}>{aboutCharacters} / 80 minimum characters</Text>
+          <Text style={[styles.counter, aboutCharacters >= MIN_ABOUT_CHARACTERS && styles.counterComplete]}>{aboutCharacters} / {MIN_ABOUT_CHARACTERS} characters</Text>
         </OnboardingCard>
       );
     }
 
-    if (step === 4) {
+    if (step === 3) {
       return (
         <OnboardingCard>
           <Text style={styles.groupTitle}>Services offered</Text>
@@ -920,25 +909,17 @@ export function OnboardingScreen({ navigation }: Props) {
             })}
           </View>
           {errors.servicesOffered ? <Text style={styles.errorText}>{errors.servicesOffered}</Text> : null}
-          <View style={styles.hidden}>
-            <View style={styles.priceCard}><Text style={styles.priceLabel}>Chat</Text><Text style={styles.priceValue}>₹2.5/message</Text></View>
-            <View style={styles.priceCard}><Text style={styles.priceLabel}>Audio call</Text><Text style={styles.priceValue}>₹18/min</Text></View>
-            <View style={styles.priceCard}><Text style={styles.priceLabel}>Video call</Text><Text style={styles.priceValue}>₹24/min</Text></View>
-          </View>
           <View style={styles.priceGrid}>
             <View style={styles.priceCard}><Text style={styles.priceLabel}>Chat</Text><Text style={styles.priceValue}>{"\u20b92.5/message"}</Text></View>
             <View style={styles.priceCard}><Text style={styles.priceLabel}>Audio call</Text><Text style={styles.priceValue}>{"\u20b918/min"}</Text></View>
             <View style={styles.priceCard}><Text style={styles.priceLabel}>Video call</Text><Text style={styles.priceValue}>{"\u20b924/min"}</Text></View>
           </View>
           <Text style={styles.priceNote}>Pricing is display only. Backend remains the source of truth.</Text>
-          <Text style={styles.groupTitle}>Categories</Text>
-          <ChipSelector options={categoryOptions} values={profile.categories} onToggle={(value) => setProfile((current) => ({ ...current, categories: toggleArrayValue(current.categories, value) }))} />
-          {errors.categories ? <Text style={styles.errorText}>{errors.categories}</Text> : null}
         </OnboardingCard>
       );
     }
 
-    if (step === 5) {
+    if (step === 4) {
       return (
         <OnboardingCard>
           <View style={styles.infoCard}>
@@ -979,12 +960,13 @@ export function OnboardingScreen({ navigation }: Props) {
       );
     }
 
-    if (step === 6) {
+    if (step === 5) {
       return (
         <OnboardingCard>
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>Live Video Verification</Text>
-            <Text style={styles.infoText}>Record a short live video inside this flow. Keep it between 10 and 30 seconds.</Text>
+            <Text style={styles.infoText}>Record a short live video inside this flow. Keep it between 10 and 20 seconds.</Text>
+            <Text style={styles.infoText}>Recording stops automatically after 20 seconds.</Text>
           </View>
           <View style={styles.scriptCard}>
             <Text style={styles.infoTitle}>Read script while recording</Text>
@@ -1004,7 +986,7 @@ export function OnboardingScreen({ navigation }: Props) {
                 mode="video"
                 mute={false}
                 videoQuality="480p"
-                active={step === 6}
+                active={step === 5}
                 onCameraReady={() => setCameraReady(true)}
                 onMountError={(event) => {
                   console.warn("[partner-live-video] camera mount failed", event);
@@ -1019,7 +1001,7 @@ export function OnboardingScreen({ navigation }: Props) {
             )}
             {isRecordingLiveVideo ? (
               <View style={styles.recordingBadge}>
-                <Text style={styles.recordingText}>Recording... {recordingSeconds}s / 30s</Text>
+                <Text style={styles.recordingText}>Recording... {recordingSeconds}s / {MAX_VIDEO_SECONDS}s</Text>
               </View>
             ) : null}
           </View>
@@ -1028,7 +1010,7 @@ export function OnboardingScreen({ navigation }: Props) {
           <View style={styles.videoActions}>
             {!cameraEnabled ? <AppButton title="Enable Camera" onPress={() => void enableCamera()} style={styles.flexButton} /> : null}
             {cameraEnabled && !isRecordingLiveVideo && !liveVideo ? <AppButton title="Start Recording" disabled={!cameraReady} onPress={() => void startLiveRecording()} style={styles.flexButton} /> : null}
-            {isRecordingLiveVideo ? <AppButton title="Stop Recording" variant="danger" onPress={stopLiveRecording} style={styles.flexButton} /> : null}
+            {isRecordingLiveVideo ? <AppButton title="Stop Recording" variant="danger" disabled={recordingSeconds < MIN_VIDEO_SECONDS} onPress={stopLiveRecording} style={styles.flexButton} /> : null}
             {liveVideo ? <AppButton title="Record Again" variant="secondary" onPress={recordLiveVideoAgain} style={styles.flexButton} /> : null}
           </View>
           {liveVideo ? <Text style={styles.uploadState}>{liveVideoUploaded ? "Live video is uploaded." : "Uploading live video..."}</Text> : null}
@@ -1083,6 +1065,7 @@ export function OnboardingScreen({ navigation }: Props) {
           total={stepTitles.length}
           canContinue={canContinue}
           submitting={submitting}
+          onBack={goBackStep}
           onNext={step === stepTitles.length - 1 ? () => void handleSubmit() : goNext}
         />
         <View style={styles.footerHint}>
@@ -1163,6 +1146,7 @@ const styles = StyleSheet.create({
   errorText: { color: colors.danger, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   debugErrorText: { color: colors.danger, fontSize: 12, lineHeight: 18, fontWeight: "700" },
   groupTitle: { color: colors.text, fontWeight: "900", fontSize: 15, marginTop: 4 },
+  selectionHint: { color: colors.textMuted, fontWeight: "700", fontSize: 12, lineHeight: 18 },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 8, maxWidth: "100%" },
   chipSelected: { borderColor: colors.primary, backgroundColor: colors.primary },
@@ -1180,7 +1164,6 @@ const styles = StyleSheet.create({
   priceLabel: { color: colors.textMuted, fontWeight: "800", fontSize: 12 },
   priceValue: { color: colors.text, fontWeight: "900", fontSize: 16, marginTop: 4 },
   priceNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18, fontWeight: "700" },
-  hidden: { display: "none" },
   infoCard: { borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, padding: 14, gap: 6 },
   infoTitle: { color: colors.text, fontWeight: "900", fontSize: 14 },
   infoText: { color: colors.textMuted, lineHeight: 19, fontSize: 12 },
