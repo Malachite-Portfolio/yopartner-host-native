@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { acceptPartnerRequest, declinePartnerRequest, getPartnerDashboard } from "../api/partner";
 import { Avatar } from "../components/Avatar";
+import { startCallRingtone, stopCallRingtone } from "../native/callRingtone";
 import type { RootStackParamList } from "../navigation/types";
 import { colors } from "../theme/colors";
 import { maskPhone } from "../utils/format";
@@ -22,29 +23,49 @@ export function IncomingCallScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     let mounted = true;
+    let checking = false;
+    let terminal = false;
+    startCallRingtone();
     Vibration.vibrate([0, 700, 350, 700], true);
-    void getPartnerDashboard().then((response) => {
-      if (!mounted || !response.data) return;
-      const pending = (response.data.pendingRequests ?? []).some((request) => request.id === requestId);
-      const active = (response.data.activeSessions ?? []).some((session) => session.id === requestId);
-      if (active) {
-        Vibration.cancel();
-        navigation.replace("Call", { sessionId: requestId, kind });
-        return;
+    const checkAvailability = async () => {
+      if (!mounted || checking || terminal) return;
+      checking = true;
+      try {
+        const response = await getPartnerDashboard();
+        if (!mounted || !response.data) return;
+        const pending = (response.data.pendingRequests ?? []).some((request) => request.id === requestId);
+        const active = (response.data.activeSessions ?? []).some((session) => session.id === requestId);
+        if (active) {
+          terminal = true;
+          stopCallRingtone();
+          Vibration.cancel();
+          navigation.replace("Call", { sessionId: requestId, kind });
+          return;
+        }
+        if (!pending) {
+          terminal = true;
+          stopCallRingtone();
+          Vibration.cancel();
+          setCallAvailable(false);
+          setError("This call is no longer active.");
+        }
+      } finally {
+        checking = false;
       }
-      if (!pending) {
-        Vibration.cancel();
-        setCallAvailable(false);
-        setError("This call is no longer active.");
-      }
-    });
+    };
+    void checkAvailability();
+    const availabilityTimer = setInterval(() => void checkAvailability(), 4000);
     return () => {
       mounted = false;
+      clearInterval(availabilityTimer);
+      stopCallRingtone();
       Vibration.cancel();
     };
   }, [kind, navigation, requestId]);
 
   const accept = async () => {
+    stopCallRingtone();
+    Vibration.cancel();
     setAction("accept");
     setError("");
     const response = await acceptPartnerRequest(requestId);
@@ -53,11 +74,12 @@ export function IncomingCallScreen({ route, navigation }: Props) {
       setAction(null);
       return;
     }
-    Vibration.cancel();
     navigation.replace("Call", { sessionId: requestId, kind });
   };
 
   const decline = async () => {
+    stopCallRingtone();
+    Vibration.cancel();
     setAction("decline");
     setError("");
     const response = await declinePartnerRequest(requestId);
@@ -66,7 +88,6 @@ export function IncomingCallScreen({ route, navigation }: Props) {
       setAction(null);
       return;
     }
-    Vibration.cancel();
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.replace("MainTabs");
   };

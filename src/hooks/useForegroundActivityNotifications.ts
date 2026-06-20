@@ -6,7 +6,6 @@ import { isActiveChatSession, showIncomingCall } from "../navigation/navigationR
 import type { PartnerIncomingRequest, SessionRecord } from "../types/api";
 import { getRequestMemberLabel, getSessionMemberLabel } from "../utils/partner";
 import {
-  CALL_NOTIFICATION_CHANNEL,
   CHAT_NOTIFICATION_CHANNEL,
   showPartnerLocalNotification,
 } from "../utils/nativeNotifications";
@@ -42,19 +41,6 @@ export function useForegroundActivityNotifications(enabled: boolean) {
       const nextCall = incomingCalls.find((request) => !handledCallIdsRef.current.has(request.id));
       if (nextCall) {
         const callerName = getRequestMemberLabel(nextCall);
-        void showPartnerLocalNotification({
-          data: {
-            type: "PARTNER_INCOMING_REQUEST",
-            channel: CALL_NOTIFICATION_CHANNEL,
-            requestId: nextCall.id,
-            sessionId: nextCall.id,
-            serviceType: nextCall.type,
-            callerName,
-          },
-          title: `${callerName} is calling`,
-          body: `Incoming ${nextCall.type === "VIDEO" ? "video" : "audio"} call`,
-          dedupeKey: `call:${nextCall.id}`,
-        }).catch(() => undefined);
         if (showIncomingCall({ requestId: nextCall.id, kind: nextCall.type, callerName })) {
           handledCallIdsRef.current.add(nextCall.id);
         }

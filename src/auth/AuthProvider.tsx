@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { getCurrentFirebaseUser, getCurrentIdToken, sendPhoneOtp, signOutFirebase } from "./firebasePhone";
 import { isAuthorizationFailure, verifyBackendSession } from "./sessionApi";
 import { clearPartnerSession, getPartnerBackendToken, getPartnerPhone, savePartnerSession } from "./tokenStore";
+import { stopCallRingtone } from "../native/callRingtone";
 
 type AuthContextValue = {
   initializing: boolean;
@@ -185,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    stopCallRingtone();
     await clearPartnerSession();
     await signOutFirebase().catch(() => undefined);
     setSignedIn(false);

@@ -65,6 +65,7 @@ export async function configureAndroidNotificationChannels() {
     Notifications.setNotificationChannelAsync(CHAT_NOTIFICATION_CHANNEL, {
       name: "Chat messages",
       importance: Notifications.AndroidImportance.HIGH,
+      enableVibrate: true,
       vibrationPattern: [0, 180, 120, 180],
       sound: "default",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
@@ -72,6 +73,7 @@ export async function configureAndroidNotificationChannels() {
     Notifications.setNotificationChannelAsync(CALL_NOTIFICATION_CHANNEL, {
       name: "Incoming calls",
       importance: Notifications.AndroidImportance.MAX,
+      enableVibrate: true,
       vibrationPattern: [0, 700, 350, 700, 350, 700],
       sound: "default",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,

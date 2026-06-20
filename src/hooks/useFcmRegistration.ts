@@ -12,6 +12,7 @@ import {
   savePartnerFcmToken,
 } from "../auth/tokenStore";
 import { isActiveChatSession, showIncomingCall } from "../navigation/navigationRef";
+import { stopCallRingtone } from "../native/callRingtone";
 import {
   configureAndroidNotificationChannels,
   displayPartnerNotification,
@@ -178,7 +179,7 @@ async function startRegistration(generation: number) {
       const serviceType = getNotificationServiceType(data);
       if (sessionId && serviceType && isCallNotification(data)) {
         const callerName = typeof data.callerName === "string" ? data.callerName : undefined;
-        showIncomingCall({ requestId: sessionId, kind: serviceType, callerName });
+        if (showIncomingCall({ requestId: sessionId, kind: serviceType, callerName })) return;
       }
       void displayPartnerNotification(remoteMessage).catch((error) => {
         if (isDebugBuild()) console.warn("[notifications] foreground display failed", error);
@@ -207,6 +208,7 @@ function ensureRegistration() {
 }
 
 function stopRegistration() {
+  stopCallRingtone();
   registrationGeneration += 1;
   registrationStarted = false;
   unsubscribeTokenRefresh?.();
