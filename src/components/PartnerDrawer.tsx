@@ -44,9 +44,8 @@ export function PartnerDrawer({ visible, onClose }: Props) {
         <View style={[styles.drawer, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 18 }]}>
           <View style={styles.topRow}>
             <View style={styles.brandRow}>
-              <Image source={require("../../assets/yopartner-logo.png")} style={styles.logo} />
-              <View>
-                <Text style={styles.brand}>YoPartner</Text>
+              <View style={styles.brandIdentity}>
+                <Image resizeMode="contain" source={require("../../assets/yopartner-logo.png")} style={styles.logo} />
                 <Text style={styles.workspace}>PARTNER WORKSPACE</Text>
               </View>
             </View>
@@ -96,8 +95,8 @@ const styles = StyleSheet.create({
   },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  logo: { width: 38, height: 38, borderRadius: 19 },
-  brand: { color: colors.text, fontSize: 18, fontWeight: "900" },
+  brandIdentity: { alignItems: "flex-start" },
+  logo: { width: 124, height: 43 },
   workspace: { color: colors.textMuted, fontSize: 11, fontWeight: "900", marginTop: 2 },
   closeButton: {
     width: 38,

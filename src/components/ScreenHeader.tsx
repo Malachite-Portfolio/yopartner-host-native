@@ -1,6 +1,6 @@
 import { Bell, Menu, ShieldCheck } from "lucide-react-native";
 import React, { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { PartnerDrawer } from "./PartnerDrawer";
@@ -25,7 +25,9 @@ export function ScreenHeader({ title }: { title: string }) {
             <View style={styles.badge}>
               <ShieldCheck size={14} color={colors.primary} />
             </View>
-            <Image source={require("../../assets/yopartner-logo.png")} style={styles.avatar} />
+            <View style={styles.avatar} accessibilityLabel="YoPartner">
+              <Text style={styles.avatarText}>Y</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -98,5 +100,9 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  avatarText: { color: colors.white, fontSize: 16, fontWeight: "900" },
 });

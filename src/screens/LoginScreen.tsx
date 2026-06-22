@@ -96,9 +96,15 @@ export function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, compact && styles.compactContent]}>
+        <ScrollView
+          style={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.content, compact && styles.compactContent]}
+        >
           <View style={[styles.hero, compact && styles.compactHero]}>
             {otpSent ? (
               <Pressable style={styles.backButton} onPress={resetToPhone}>
@@ -106,7 +112,12 @@ export function LoginScreen() {
                 <Text style={styles.backText}>Back</Text>
               </Pressable>
             ) : null}
-            <Image source={require("../../assets/yopartner-logo.png")} style={[styles.logo, compact && styles.compactLogo]} />
+            <Image
+              accessibilityLabel="YoPartner"
+              resizeMode="contain"
+              source={require("../../assets/yopartner-logo.png")}
+              style={[styles.logo, compact && styles.compactLogo]}
+            />
           </View>
 
           <AppCard style={styles.card}>
@@ -150,9 +161,9 @@ export function LoginScreen() {
               </>
             ) : (
               <>
-                <Pressable style={styles.otpBoxes} onPress={() => otpInputRef.current?.focus()}>
+                <Pressable style={[styles.otpBoxes, compact && styles.compactOtpBoxes]} onPress={() => otpInputRef.current?.focus()}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <View key={index} style={[styles.otpBox, otp[index] && styles.otpBoxFilled]}>
+                    <View key={index} style={[styles.otpBox, compact && styles.compactOtpBox, otp[index] && styles.otpBoxFilled]}>
                       <Text style={styles.otpDigit}>{otp[index] || ""}</Text>
                     </View>
                   ))}
@@ -195,6 +206,7 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   safeArea: { flex: 1 },
+  scroll: { flex: 1 },
   content: { flexGrow: 1, justifyContent: "center", padding: 18, paddingBottom: 22 },
   compactContent: { justifyContent: "flex-start", paddingHorizontal: 14, paddingTop: 12 },
   hero: { alignItems: "center", marginBottom: 16 },
@@ -213,8 +225,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backText: { color: colors.text, fontWeight: "900" },
-  logo: { width: 74, height: 74, borderRadius: 20 },
-  compactLogo: { width: 56, height: 56, borderRadius: 16 },
+  logo: { width: 264, height: 91, maxWidth: "100%" },
+  compactLogo: { width: 218, height: 75 },
   card: { gap: 12 },
   stepMeta: { color: colors.primary, fontSize: 12, fontWeight: "900", letterSpacing: 0, textTransform: "uppercase", textAlign: "center" },
   progressTrack: { height: 8, borderRadius: 999, backgroundColor: colors.slateSoft, overflow: "hidden" },
@@ -235,7 +247,9 @@ const styles = StyleSheet.create({
   helper: { color: colors.textMuted, fontSize: 12, textAlign: "center", lineHeight: 18 },
   statusRow: { alignItems: "center" },
   otpBoxes: { flexDirection: "row", gap: 8, justifyContent: "center" },
+  compactOtpBoxes: { gap: 6 },
   otpBox: { width: 43, height: 52, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center" },
+  compactOtpBox: { width: 38, height: 48, borderRadius: 12 },
   otpBoxFilled: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   otpDigit: { color: colors.text, fontWeight: "900", fontSize: 20 },
   hiddenOtpInput: { width: 1, height: 1, opacity: 0 },

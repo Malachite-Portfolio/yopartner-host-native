@@ -18,7 +18,7 @@ export function SplashScreen({ navigation }: Props) {
     <View style={styles.screen}>
       <View style={styles.brandBlock}>
         <View style={styles.logoWrap}>
-          <Image source={require("../../assets/yopartner-logo.png")} style={styles.logo} />
+          <Image accessibilityLabel="YoPartner" resizeMode="contain" source={require("../../assets/yopartner-logo.png")} style={styles.logo} />
         </View>
         <Text style={styles.brand}>YoPartner Host</Text>
         <Text style={styles.copy}>Your partner workspace for safe, respectful conversations.</Text>
@@ -45,9 +45,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoWrap: {
-    width: 122,
+    width: "100%",
+    maxWidth: 310,
     height: 122,
-    borderRadius: 34,
+    borderRadius: 28,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -57,9 +58,8 @@ const styles = StyleSheet.create({
     ...shadows.floating,
   },
   logo: {
-    width: 96,
-    height: 96,
-    borderRadius: 28,
+    width: "92%",
+    height: 102,
   },
   brand: {
     color: colors.text,
