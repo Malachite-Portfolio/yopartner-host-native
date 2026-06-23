@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ArrowLeft, Camera, CameraOff, Check, Lock, Mic, MicOff, PhoneOff, RefreshCw, ShieldCheck, Volume2, VolumeX, Video } from "lucide-react-native";
+import { ArrowLeft, Camera, CameraOff, Check, Lock, Mic, MicOff, PhoneOff, RefreshCw, ShieldCheck, Volume2, VolumeX } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, RtcSurfaceView } from "react-native-agora";
@@ -9,7 +9,6 @@ import type { RootStackParamList } from "../navigation/types";
 import { colors } from "../theme/colors";
 import { cardShadow } from "../theme/styles";
 import { formatClock } from "../utils/format";
-import { CallControlButton } from "../components/CallControlButton";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Call">;
 
@@ -145,6 +144,7 @@ export function CallScreen({ route, navigation }: Props) {
   const partnerName = "YoPartner";
   const callStatus = joining ? "Joining securely..." : joined ? "Audio connected" : "Ready";
   const memberStatus = remoteUid ? "Member is connected." : "Waiting for member to join the session.";
+  const videoCallStatus = joining ? "Joining securely..." : remoteUid ? "Video connected" : joined ? "Waiting for video..." : "Ready";
 
   if (!video) {
     return (
@@ -208,52 +208,83 @@ export function CallScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.topbar}>
-        <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={20} color="#fff" />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{video ? "Video conversation" : "Audio conversation"}</Text>
-          <Text style={styles.timer}>{formatClock(seconds)}</Text>
+    <View style={styles.videoScreen}>
+      <View style={styles.videoStage}>
+        {remoteUid ? (
+          <RtcSurfaceView canvas={{ uid: remoteUid }} style={styles.videoRemoteSurface} />
+        ) : (
+          <View style={styles.videoWaitingStage}>
+            <View style={styles.videoWaitingCard}>
+              <View style={styles.videoVerifiedIcon}>
+                <ShieldCheck size={46} color={colors.primary} />
+              </View>
+              <Text style={styles.videoWaitingTitle}>{joining ? "Joining secure video..." : "Waiting for video..."}</Text>
+              <Text style={styles.videoWaitingCopy}>Your YoPartner video session will appear here as soon as the member connects.</Text>
+              {joining ? <ActivityIndicator color={colors.primary} style={{ marginTop: 14 }} /> : null}
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.videoHeader, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" style={styles.videoBackButton} onPress={() => navigation.goBack()}>
+            <ArrowLeft size={20} color={colors.text} />
+          </Pressable>
+          <View style={styles.videoSecurePill}>
+            <Text style={styles.videoSecurePillText}>YOPARTNER SECURE CALL</Text>
+          </View>
+          <View style={styles.videoSecureBadge}>
+            <Lock size={13} color={colors.primary} />
+            <Text style={styles.videoSecureBadgeText}>Secure</Text>
+          </View>
         </View>
+
+        <View style={[styles.videoInfoCard, { top: Math.max(insets.top, 12) + 64 }]}>
+          <Text style={styles.videoEyebrow}>VIDEO CALL</Text>
+          <View style={styles.videoNameRow}>
+            <Text style={styles.videoName} numberOfLines={1}>{partnerName}</Text>
+            <View style={styles.videoNameBadge}>
+              <Check size={12} color={colors.white} strokeWidth={3} />
+            </View>
+          </View>
+          <Text style={styles.videoStatus}>{videoCallStatus} · {formatClock(seconds)}</Text>
+        </View>
+
+        <View style={styles.localVideoWrap}>
+          {!cameraOff ? (
+            <RtcSurfaceView canvas={{ uid: 0 }} style={styles.videoLocalSurface} />
+          ) : (
+            <View style={styles.videoLocalOff}>
+              <CameraOff size={24} color={colors.primary} />
+              <Text style={styles.videoLocalOffText}>Camera Off</Text>
+            </View>
+          )}
+        </View>
+
+        {error ? <Text style={styles.videoError}>{error}</Text> : null}
       </View>
 
-      {video && joined ? (
-        <View style={styles.videoArea}>
-          {remoteUid ? <RtcSurfaceView canvas={{ uid: remoteUid }} style={styles.remoteVideo} /> : <View style={styles.waitingPanel}><Text style={styles.waiting}>Waiting for member video...</Text></View>}
-          {!cameraOff ? <RtcSurfaceView canvas={{ uid: 0 }} style={styles.localVideo} /> : <View style={styles.localVideoOff}><CameraOff size={22} color={colors.white} /></View>}
+      <View style={[styles.videoControlsWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={styles.videoControlsCard}>
+          <Pressable accessibilityRole="button" accessibilityLabel={muted ? "Unmute microphone" : "Mute microphone"} style={[styles.videoControlButton, muted && styles.videoControlActive]} onPress={toggleMute}>
+            {muted ? <MicOff size={21} color={colors.primary} /> : <Mic size={21} color={colors.primary} />}
+            <Text style={styles.videoControlLabel}>{muted ? "Unmute" : "Mic"}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={speaker ? "Turn speaker off" : "Turn speaker on"} style={[styles.videoControlButton, speaker && styles.videoControlActive]} onPress={toggleSpeaker}>
+            {speaker ? <Volume2 size={21} color={colors.primary} /> : <VolumeX size={21} color={colors.primary} />}
+            <Text style={styles.videoControlLabel}>{speaker ? "Speaker" : "Earpiece"}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={cameraOff ? "Turn camera on" : "Turn camera off"} style={[styles.videoControlButton, cameraOff && styles.videoControlActive]} onPress={toggleCamera}>
+            {cameraOff ? <CameraOff size={21} color={colors.primary} /> : <Camera size={21} color={colors.primary} />}
+            <Text style={styles.videoControlLabel}>{cameraOff ? "Camera" : "Hide"}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Switch camera" style={styles.videoControlButton} onPress={switchCamera}>
+            <RefreshCw size={21} color={colors.primary} />
+            <Text style={styles.videoControlLabel}>Flip</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="End call" style={styles.videoEndButton} onPress={() => void leave()}>
+            <PhoneOff size={28} color={colors.white} />
+          </Pressable>
         </View>
-      ) : (
-        <View style={styles.audioArea}>
-          <View style={styles.callIcon}>{video ? <Video size={42} color={colors.primary} /> : <Mic size={42} color={colors.primary} />}</View>
-          <Text style={styles.callTitle}>{joining ? "Joining securely..." : joined ? "Call connected" : "Ready"}</Text>
-          <Text style={styles.callCopy}>{remoteUid ? "Member is connected." : "Waiting for member to join the session."}</Text>
-          {joining ? <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} /> : null}
-        </View>
-      )}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.controls}>
-        <CallControlButton label={muted ? "Unmute" : "Mute"} active={muted} onPress={toggleMute}>
-          {muted ? <MicOff size={22} color={colors.white} /> : <Mic size={22} color={colors.white} />}
-        </CallControlButton>
-        <CallControlButton label={speaker ? "Speaker" : "Earpiece"} active={speaker} onPress={toggleSpeaker}>
-          {speaker ? <Volume2 size={22} color={colors.white} /> : <VolumeX size={22} color={colors.white} />}
-        </CallControlButton>
-        {video ? (
-          <>
-            <CallControlButton label={cameraOff ? "Camera" : "Hide"} active={cameraOff} onPress={toggleCamera}>
-              {cameraOff ? <CameraOff size={22} color={colors.white} /> : <Camera size={22} color={colors.white} />}
-            </CallControlButton>
-            <CallControlButton label="Flip" onPress={switchCamera}>
-              <RefreshCw size={22} color={colors.white} />
-            </CallControlButton>
-          </>
-        ) : null}
-        <CallControlButton label="End" danger onPress={() => void leave()}>
-          <PhoneOff size={22} color={colors.white} />
-        </CallControlButton>
       </View>
     </View>
   );
@@ -364,6 +395,166 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.danger,
     ...cardShadow,
+  },
+  videoScreen: { flex: 1, backgroundColor: colors.tealMist },
+  videoStage: { flex: 1, backgroundColor: "#061817", overflow: "hidden" },
+  videoRemoteSurface: { flex: 1 },
+  videoWaitingStage: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.tealMist,
+    paddingHorizontal: 24,
+  },
+  videoWaitingCard: {
+    width: "100%",
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 22,
+    alignItems: "center",
+    ...cardShadow,
+  },
+  videoVerifiedIcon: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primarySoft,
+    marginBottom: 16,
+  },
+  videoWaitingTitle: { color: colors.text, fontSize: 22, fontWeight: "900", textAlign: "center" },
+  videoWaitingCopy: { color: colors.textMuted, fontSize: 13, lineHeight: 20, fontWeight: "700", textAlign: "center", marginTop: 8 },
+  videoHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 6,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  videoBackButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderWidth: 1,
+    borderColor: "rgba(220,234,229,0.9)",
+  },
+  videoSecurePill: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderWidth: 1,
+    borderColor: "rgba(220,234,229,0.9)",
+    paddingHorizontal: 10,
+  },
+  videoSecurePillText: { color: colors.primaryDark, fontSize: 10, fontWeight: "900", letterSpacing: 1, textAlign: "center" },
+  videoSecureBadge: {
+    minHeight: 38,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(232,247,242,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(184,214,205,0.95)",
+    paddingHorizontal: 10,
+  },
+  videoSecureBadgeText: { color: colors.primaryDark, fontSize: 11, fontWeight: "900" },
+  videoInfoCard: {
+    position: "absolute",
+    left: 16,
+    right: 132,
+    zIndex: 5,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(220,234,229,0.9)",
+    padding: 12,
+  },
+  videoEyebrow: { color: colors.primary, fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
+  videoNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5 },
+  videoName: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "900", maxWidth: "84%" },
+  videoNameBadge: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  videoStatus: { color: colors.textMuted, fontSize: 12, lineHeight: 17, fontWeight: "800", marginTop: 4 },
+  localVideoWrap: {
+    position: "absolute",
+    right: 14,
+    top: 116,
+    width: 110,
+    height: 158,
+    borderRadius: 22,
+    zIndex: 7,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
+    backgroundColor: colors.surface,
+    ...cardShadow,
+  },
+  videoLocalSurface: { flex: 1 },
+  videoLocalOff: { flex: 1, alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.surfaceMuted },
+  videoLocalOffText: { color: colors.text, fontSize: 11, fontWeight: "900" },
+  videoError: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 12,
+    color: colors.danger,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderRadius: 16,
+    padding: 10,
+    textAlign: "center",
+    fontWeight: "800",
+    overflow: "hidden",
+  },
+  videoControlsWrap: { backgroundColor: colors.tealMist, paddingHorizontal: 12, paddingTop: 10 },
+  videoControlsCard: {
+    minHeight: 88,
+    borderRadius: 30,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    ...cardShadow,
+  },
+  videoControlButton: {
+    flex: 1,
+    minHeight: 62,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  videoControlActive: { backgroundColor: colors.primarySoft, borderColor: colors.borderStrong },
+  videoControlLabel: { color: colors.text, fontSize: 10, fontWeight: "900", textAlign: "center" },
+  videoEndButton: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.danger,
   },
   screen: { flex: 1, backgroundColor: "#071716" },
   topbar: { minHeight: 82, paddingHorizontal: 16, paddingTop: 18, flexDirection: "row", alignItems: "center", gap: 12 },

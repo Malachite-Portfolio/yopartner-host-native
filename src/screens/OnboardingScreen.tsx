@@ -398,6 +398,7 @@ export function OnboardingScreen({ navigation }: Props) {
   const [submitDebugMessage, setSubmitDebugMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [cameraSessionKey, setCameraSessionKey] = useState(0);
 
   const requiredDocumentsUploaded = Boolean(docs.selfie?.upload && docs.aadhaarFront?.upload && docs.aadhaarBack?.upload);
   const documentsUploading = Boolean(docs.selfie?.uploading || docs.aadhaarFront?.uploading || docs.aadhaarBack?.uploading);
@@ -470,6 +471,43 @@ export function OnboardingScreen({ navigation }: Props) {
       hideSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (step !== 5) return;
+    if (isRecordingLiveVideo || liveVideo) return;
+
+    cameraRef.current = null;
+    setCameraReady(false);
+    setRecordingSeconds(0);
+    recordingInFlightRef.current = false;
+    stopRecordingRequestedRef.current = false;
+    setErrors((current) => ({ ...current, liveVideo: undefined }));
+    setCameraSessionKey((current) => current + 1);
+
+    const cameraGranted = cameraPermission?.granted === true;
+    const microphoneGranted = microphonePermission?.granted === true;
+    const cameraDenied = cameraPermission?.granted === false;
+    const microphoneDenied = microphonePermission?.granted === false;
+
+    console.log("[partner-live-video] step active", {
+      cameraGranted,
+      microphoneGranted,
+      cameraDenied,
+      microphoneDenied,
+      cameraReady: false,
+    });
+
+    if (cameraGranted && microphoneGranted) {
+      setCameraEnabled(true);
+      setPermissionState("Preparing camera...");
+    } else if (cameraDenied || microphoneDenied) {
+      setCameraEnabled(false);
+      setPermissionState("Camera or microphone permission denied.");
+    } else {
+      setCameraEnabled(false);
+      setPermissionState("Camera and microphone not requested yet.");
+    }
+  }, [cameraPermission?.granted, isRecordingLiveVideo, liveVideo, microphonePermission?.granted, step]);
 
   const validateStep = (stepIndex: number): ErrorMap => {
     const nextErrors: ErrorMap = {};
@@ -615,12 +653,21 @@ export function OnboardingScreen({ navigation }: Props) {
       return;
     }
     if (!cameraReady) {
-      setErrors({ liveVideo: "Camera is still getting ready. Please try again." });
+      console.warn("[partner-live-video] recording blocked: camera not ready", {
+        cameraGranted: cameraPermission?.granted === true,
+        microphoneGranted: microphonePermission?.granted === true,
+        cameraReady,
+      });
+      setErrors({ liveVideo: "Camera is still preparing. Please wait a moment and try again." });
       return;
     }
     const camera = cameraRef.current;
     if (!camera) {
-      console.warn("[partner-live-video] camera ref missing before recording start");
+      console.warn("[partner-live-video] camera ref missing before recording start", {
+        cameraGranted: cameraPermission?.granted === true,
+        microphoneGranted: microphonePermission?.granted === true,
+        cameraReady,
+      });
       setErrors({ liveVideo: "Could not start recording. Please try again." });
       return;
     }
@@ -653,7 +700,12 @@ export function OnboardingScreen({ navigation }: Props) {
         contentType: "video/mp4",
       });
     } catch (error) {
-      console.warn("[partner-live-video] recording failed", error);
+      console.warn("[partner-live-video] recording failed", {
+        message: error instanceof Error ? error.message : "Unknown recording error",
+        cameraGranted: cameraPermission?.granted === true,
+        microphoneGranted: microphonePermission?.granted === true,
+        cameraReady,
+      });
       setIsRecordingLiveVideo(false);
       setPermissionState("Camera and microphone ready.");
       setErrors({ liveVideo: "Could not start recording. Please try again." });
@@ -1039,6 +1091,7 @@ export function OnboardingScreen({ navigation }: Props) {
             {cameraEnabled && !liveVideo ? (
               <View style={styles.cameraFrame}>
                 <CameraView
+                  key={cameraSessionKey}
                   ref={cameraRef}
                   style={styles.cameraView}
                   facing="front"
@@ -1046,7 +1099,15 @@ export function OnboardingScreen({ navigation }: Props) {
                   mute={false}
                   videoQuality="480p"
                   active={step === 5}
-                  onCameraReady={() => setCameraReady(true)}
+                  onCameraReady={() => {
+                    setCameraReady(true);
+                    setPermissionState("Camera and microphone ready.");
+                    console.log("[partner-live-video] camera ready", {
+                      cameraGranted: cameraPermission?.granted === true,
+                      microphoneGranted: microphonePermission?.granted === true,
+                      cameraReady: true,
+                    });
+                  }}
                   onMountError={(event) => {
                     console.warn("[partner-live-video] camera mount failed", event);
                     setErrors({ liveVideo: "Camera preview could not start. Please try again." });
@@ -1073,7 +1134,7 @@ export function OnboardingScreen({ navigation }: Props) {
           {liveVideo ? <Text style={liveVideo.uploadError ? styles.errorText : styles.uploadState}>{toUploadStatus(liveVideo)}{liveVideo.uploadError ? `: ${liveVideo.uploadError}` : ""}</Text> : null}
           <View style={styles.videoActions}>
             {!cameraEnabled ? <AppButton title="Enable Camera" onPress={() => void enableCamera()} style={styles.flexButton} /> : null}
-            {cameraEnabled && !isRecordingLiveVideo && !liveVideo ? <AppButton title="Start Recording" disabled={!cameraReady} onPress={() => void startLiveRecording()} style={styles.flexButton} /> : null}
+            {cameraEnabled && !isRecordingLiveVideo && !liveVideo ? <AppButton title={cameraReady ? "Start Recording" : "Preparing camera..."} disabled={!cameraReady} onPress={() => void startLiveRecording()} style={styles.flexButton} /> : null}
             {isRecordingLiveVideo ? <AppButton title="Stop Recording" variant="danger" disabled={recordingSeconds < MIN_VIDEO_SECONDS} onPress={stopLiveRecording} style={styles.flexButton} /> : null}
             {liveVideo ? <AppButton title="Record Again" variant="secondary" onPress={recordLiveVideoAgain} style={styles.flexButton} /> : null}
           </View>
