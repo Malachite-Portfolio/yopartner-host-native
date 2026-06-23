@@ -10,7 +10,7 @@ import {
   Video,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppButton } from "../components/AppButton";
 import { AppCard } from "../components/AppCard";
@@ -352,6 +352,7 @@ export function OnboardingScreen({ navigation }: Props) {
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitDebugMessage, setSubmitDebugMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   const requiredDocumentsUploaded = Boolean(docs.selfie?.upload && docs.aadhaarFront?.upload && docs.aadhaarBack?.upload);
   const documentsUploading = Boolean(docs.selfie?.uploading || docs.aadhaarFront?.uploading || docs.aadhaarBack?.uploading);
@@ -414,6 +415,16 @@ export function OnboardingScreen({ navigation }: Props) {
     }, 500);
     return () => clearInterval(timer);
   }, [isRecordingLiveVideo]);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardOpen(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardOpen(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const validateStep = (stepIndex: number): ErrorMap => {
     const nextErrors: ErrorMap = {};
@@ -1041,7 +1052,7 @@ export function OnboardingScreen({ navigation }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <View style={styles.header}>
           <Pressable style={styles.headerBack} onPress={step > 0 ? goBackStep : () => navigation.goBack()}>
@@ -1056,7 +1067,7 @@ export function OnboardingScreen({ navigation }: Props) {
           </View>
         </View>
       </SafeAreaView>
-      <ScreenContainer contentStyle={styles.content}>
+      <ScreenContainer contentStyle={[styles.content, keyboardOpen && styles.keyboardOpenContent]}>
         <StepHeader step={step} total={stepTitles.length} title={stepTitles[step]} />
         <OnboardingProgress step={step} total={stepTitles.length} />
         {renderStep()}
@@ -1104,6 +1115,7 @@ const styles = StyleSheet.create({
   headerMeta: { color: colors.textMuted, marginTop: 3, fontWeight: "700", fontSize: 12 },
   headerIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   content: { paddingBottom: 24 },
+  keyboardOpenContent: { paddingBottom: 180 },
   stepHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
   stepMeta: { color: colors.textMuted, fontWeight: "800", fontSize: 13 },
   stepTitle: { color: colors.text, fontSize: 24, fontWeight: "900", marginTop: 4 },
