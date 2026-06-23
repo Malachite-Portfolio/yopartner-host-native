@@ -37,7 +37,9 @@
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "USE_FULL_SCREEN_INTENT",
+        "WAKE_LOCK"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#fffdf8",

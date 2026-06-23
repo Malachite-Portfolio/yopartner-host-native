@@ -26,7 +26,13 @@ const linking: LinkingOptions<RootStackParamList> = {
       ChatThread: "chat/:sessionId",
       IncomingCall: {
         path: "incoming-call/:kind/:requestId",
-        parse: { kind: (value) => value.toUpperCase() },
+        parse: {
+          kind: (value) => value.toUpperCase(),
+          action: (value) => {
+            const action = value.toLowerCase();
+            return action === "accept" || action === "decline" ? action : "open";
+          },
+        },
       },
       Call: {
         path: "call/:kind/:sessionId",

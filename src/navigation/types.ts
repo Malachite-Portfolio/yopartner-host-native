@@ -5,7 +5,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   ApplicationStatus: undefined;
   ChatThread: { sessionId: string };
-  IncomingCall: { requestId: string; kind: "AUDIO" | "VIDEO"; callerName?: string };
+  IncomingCall: { requestId: string; kind: "AUDIO" | "VIDEO"; callerName?: string; action?: "open" | "accept" | "decline" };
   Call: { sessionId: string; kind: "AUDIO" | "VIDEO" };
   Settings: undefined;
 };

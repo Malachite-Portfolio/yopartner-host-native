@@ -1,11 +1,12 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Mic, PhoneCall, PhoneOff, Video } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, Vibration, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { acceptPartnerRequest, declinePartnerRequest, getPartnerDashboard } from "../api/partner";
 import { Avatar } from "../components/Avatar";
+import { clearIncomingCallNotification } from "../native/callNotification";
 import { startCallRingtone, stopCallRingtone } from "../native/callRingtone";
 import type { RootStackParamList } from "../navigation/types";
 import { colors } from "../theme/colors";
@@ -14,7 +15,7 @@ import { maskPhone } from "../utils/format";
 type Props = NativeStackScreenProps<RootStackParamList, "IncomingCall">;
 
 export function IncomingCallScreen({ route, navigation }: Props) {
-  const { requestId, kind, callerName } = route.params;
+  const { requestId, kind, callerName, action: notificationAction } = route.params;
   const [action, setAction] = useState<"accept" | "decline" | null>(null);
   const [error, setError] = useState("");
   const [callAvailable, setCallAvailable] = useState(true);
@@ -25,6 +26,7 @@ export function IncomingCallScreen({ route, navigation }: Props) {
     let mounted = true;
     let checking = false;
     let terminal = false;
+    void clearIncomingCallNotification(requestId);
     startCallRingtone();
     Vibration.vibrate([0, 700, 350, 700], true);
     const checkAvailability = async () => {
@@ -37,6 +39,7 @@ export function IncomingCallScreen({ route, navigation }: Props) {
         const active = (response.data.activeSessions ?? []).some((session) => session.id === requestId);
         if (active) {
           terminal = true;
+          void clearIncomingCallNotification(requestId);
           stopCallRingtone();
           Vibration.cancel();
           navigation.replace("Call", { sessionId: requestId, kind });
@@ -44,6 +47,7 @@ export function IncomingCallScreen({ route, navigation }: Props) {
         }
         if (!pending) {
           terminal = true;
+          void clearIncomingCallNotification(requestId);
           stopCallRingtone();
           Vibration.cancel();
           setCallAvailable(false);
@@ -58,12 +62,14 @@ export function IncomingCallScreen({ route, navigation }: Props) {
     return () => {
       mounted = false;
       clearInterval(availabilityTimer);
+      void clearIncomingCallNotification(requestId);
       stopCallRingtone();
       Vibration.cancel();
     };
   }, [kind, navigation, requestId]);
 
-  const accept = async () => {
+  const accept = useCallback(async () => {
+    void clearIncomingCallNotification(requestId);
     stopCallRingtone();
     Vibration.cancel();
     setAction("accept");
@@ -75,9 +81,10 @@ export function IncomingCallScreen({ route, navigation }: Props) {
       return;
     }
     navigation.replace("Call", { sessionId: requestId, kind });
-  };
+  }, [kind, navigation, requestId]);
 
-  const decline = async () => {
+  const decline = useCallback(async () => {
+    void clearIncomingCallNotification(requestId);
     stopCallRingtone();
     Vibration.cancel();
     setAction("decline");
@@ -90,7 +97,15 @@ export function IncomingCallScreen({ route, navigation }: Props) {
     }
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.replace("MainTabs");
-  };
+  }, [navigation, requestId]);
+
+  useEffect(() => {
+    if (notificationAction === "accept") {
+      void accept();
+    } else if (notificationAction === "decline") {
+      void decline();
+    }
+  }, [accept, decline, notificationAction]);
 
   return (
     <View style={styles.screen}>

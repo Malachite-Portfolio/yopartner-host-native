@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import type { FirebaseMessagingTypes } from "@react-native-firebase/messaging";
+import { showIncomingCallNotification } from "../native/callNotification";
 
 export type NotificationData = Record<string, string | object | undefined>;
 
@@ -28,6 +29,10 @@ export function getNotificationSessionId(data: NotificationData) {
 export function getNotificationServiceType(data: NotificationData) {
   const value = stringifyValue(data.serviceType || data.kind).toUpperCase();
   return value === "VIDEO" ? "VIDEO" : value === "AUDIO" ? "AUDIO" : null;
+}
+
+export function getNotificationCallerName(data: NotificationData) {
+  return stringifyValue(data.callerName || data.memberName || data.name || data.displayName);
 }
 
 export function isChatNotification(data: NotificationData) {
@@ -95,7 +100,7 @@ export function getNotificationRoute(data: NotificationData) {
   if (isCallNotification(data)) {
     const serviceType = getNotificationServiceType(data);
     if (sessionId && serviceType) {
-      return `yopartnerhost://incoming-call/${serviceType.toLowerCase()}/${encodeURIComponent(sessionId)}`;
+      return `yopartnerhost://incoming-call/${serviceType.toLowerCase()}/${encodeURIComponent(sessionId)}?action=open`;
     }
     return "yopartnerhost://dashboard";
   }
@@ -117,6 +122,20 @@ export async function showPartnerLocalNotification(input: LocalNotificationInput
   if (key && isDuplicateNotification(key)) return false;
 
   const channelId = notificationChannel(data);
+  if (channelId === CALL_NOTIFICATION_CHANNEL) {
+    const serviceType = getNotificationServiceType(data);
+    if (sessionId && serviceType) {
+      const displayed = await showIncomingCallNotification({
+        callId: sessionId,
+        sessionId,
+        requestId: sessionId,
+        kind: serviceType,
+        serviceType,
+        callerName: getNotificationCallerName(data) || "YoPartner member",
+      });
+      if (displayed) return true;
+    }
+  }
   await Notifications.scheduleNotificationAsync({
     content: {
       title: input.title || stringifyValue(data.title) || "YoPartner Host",
