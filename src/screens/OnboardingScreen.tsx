@@ -148,6 +148,51 @@ function toFriendlySubmitError(message: string) {
   return message || "Unable to submit application right now.";
 }
 
+function toFriendlySubmitApiError(error: ApiError) {
+  const message = error.message || "";
+  const lowerMessage = message.toLowerCase();
+  const details = error.details && typeof error.details === "object" ? (error.details as Record<string, unknown>) : {};
+  const backendMessage =
+    typeof details.message === "string"
+      ? details.message
+      : typeof details.error === "string"
+        ? details.error
+        : message;
+
+  if (!error.status && (lowerMessage.includes("network error") || lowerMessage.includes("timeout") || lowerMessage.includes("network request failed"))) {
+    return "Unable to reach YoPartner servers. Please check your internet connection and try again.";
+  }
+  if (error.status === 401 || error.status === 403 || lowerMessage.includes("session")) {
+    return "Your session has expired. Please log in again and submit once more.";
+  }
+  if (error.status === 413 || lowerMessage.includes("too large") || lowerMessage.includes("payload too large")) {
+    return "One uploaded file is too large. Please re-upload smaller verification files and try again.";
+  }
+  if (error.status === 400 || error.status === 422) {
+    return backendMessage || "Some verification details are missing or invalid. Please review the checklist and try again.";
+  }
+  if (error.status && error.status >= 500) {
+    return "YoPartner review submission is temporarily unavailable. Please try again in a few minutes.";
+  }
+  return toFriendlySubmitError(backendMessage);
+}
+
+function logSafeSubmitFailure(error: ApiError) {
+  const details = error.details && typeof error.details === "object" ? (error.details as Record<string, unknown>) : {};
+  const backendMessage =
+    typeof details.message === "string"
+      ? details.message
+      : typeof details.error === "string"
+        ? details.error
+        : error.message;
+  console.warn("[partner-submit] failed", {
+    endpoint: "/api/partner/applications",
+    status: error.status ?? "network",
+    code: error.code,
+    message: backendMessage,
+  });
+}
+
 function isDebugBuild() {
   return Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
 }
@@ -360,7 +405,7 @@ export function OnboardingScreen({ navigation }: Props) {
   const liveVideoUploaded = Boolean(liveVideo?.upload);
   const liveVideoPermissionDenied = cameraPermission?.granted === false || microphonePermission?.granted === false;
   const aboutCharacters = profile.aboutYourself.trim().length;
-  const liveScript = `My name is ${profile.fullName || "{name}"}. I am ${profile.age || "{age}"} years old. I am applying to become a YoPartner partner. My hobbies are ${profile.hobbies.length ? profile.hobbies.join(", ") : "{hobbies}"}. I agree to follow YoPartner safety and respectful communication rules.`;
+  const liveScript = `Hello, my name is ${profile.fullName || "{name}"}. I want to become a verified YoPartner host. My details are genuine. I understand YoPartner is a safe and respectful platform.`;
 
   const summaryRows = useMemo(
     () => [
@@ -745,6 +790,7 @@ export function OnboardingScreen({ navigation }: Props) {
     liveVideoUploaded: true,
     liveVideoFileName: uploads.liveVideo.fileName,
     liveVideoStoragePath: uploads.liveVideo.storagePath,
+    liveVideoUrl: uploads.liveVideo.downloadUrl,
   });
 
   const handleSubmit = async () => {
@@ -790,7 +836,8 @@ export function OnboardingScreen({ navigation }: Props) {
     const result = await submitPartnerApplication(buildPayload(uploads));
     setSubmitting(false);
     if (result.error) {
-      setErrors({ base: toFriendlySubmitError(result.error.message) });
+      logSafeSubmitFailure(result.error);
+      setErrors({ base: toFriendlySubmitApiError(result.error) });
       setSubmitDebugMessage(toSubmitDebugMessage(result.error));
       return;
     }
@@ -990,20 +1037,26 @@ export function OnboardingScreen({ navigation }: Props) {
           </View>
           <View style={styles.videoPreview}>
             {cameraEnabled && !liveVideo ? (
-              <CameraView
-                ref={cameraRef}
-                style={styles.cameraView}
-                facing="front"
-                mode="video"
-                mute={false}
-                videoQuality="480p"
-                active={step === 5}
-                onCameraReady={() => setCameraReady(true)}
-                onMountError={(event) => {
-                  console.warn("[partner-live-video] camera mount failed", event);
-                  setErrors({ liveVideo: "Camera preview could not start. Please try again." });
-                }}
-              />
+              <View style={styles.cameraFrame}>
+                <CameraView
+                  ref={cameraRef}
+                  style={styles.cameraView}
+                  facing="front"
+                  mode="video"
+                  mute={false}
+                  videoQuality="480p"
+                  active={step === 5}
+                  onCameraReady={() => setCameraReady(true)}
+                  onMountError={(event) => {
+                    console.warn("[partner-live-video] camera mount failed", event);
+                    setErrors({ liveVideo: "Camera preview could not start. Please try again." });
+                  }}
+                />
+                <View style={styles.cameraScriptOverlay}>
+                  <Text style={styles.cameraScriptLabel}>Read aloud</Text>
+                  <Text style={styles.cameraScriptText}>{liveScript}</Text>
+                </View>
+              </View>
             ) : (
               <>
                 <Video size={34} color={colors.white} />
@@ -1185,8 +1238,23 @@ const styles = StyleSheet.create({
   scriptText: { color: colors.text, lineHeight: 21, backgroundColor: colors.slateSoft, borderRadius: 14, padding: 12 },
   identityGrid: { gap: 5 },
   identityText: { color: colors.textMuted, fontWeight: "700", fontSize: 12, flexShrink: 1 },
-  videoPreview: { minHeight: 178, borderRadius: 18, backgroundColor: colors.black, alignItems: "center", justifyContent: "center", padding: 18, gap: 10 },
-  cameraView: { width: "100%", aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden" },
+  videoPreview: { minHeight: 178, borderRadius: 18, backgroundColor: colors.black, alignItems: "center", justifyContent: "center", padding: 12, gap: 10 },
+  cameraFrame: { width: "100%", aspectRatio: 3 / 4, borderRadius: 16, overflow: "hidden", backgroundColor: colors.black },
+  cameraView: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  cameraScriptOverlay: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 10,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 253, 248, 0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(220, 234, 229, 0.95)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  cameraScriptLabel: { color: colors.primaryDark, fontSize: 11, fontWeight: "900", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 },
+  cameraScriptText: { color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: "800" },
   recordingBadge: { position: "absolute", top: 12, alignSelf: "center", borderRadius: 999, backgroundColor: colors.danger, paddingHorizontal: 12, paddingVertical: 6 },
   recordingText: { color: colors.white, fontSize: 12, fontWeight: "900" },
   videoPreviewText: { color: colors.white, textAlign: "center", lineHeight: 20 },
