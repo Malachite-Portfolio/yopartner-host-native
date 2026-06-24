@@ -1,10 +1,10 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ArrowLeft, Camera, CameraOff, Check, Lock, Mic, MicOff, PhoneOff, RefreshCw, ShieldCheck, Volume2, VolumeX } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { createAgoraRtcEngine, ChannelProfileType, ClientRoleType, RtcSurfaceView } from "react-native-agora";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { endSession, getSessionAgoraToken, markSessionMediaReady } from "../api/sessions";
+import { endSession, getSessionAgoraToken, getSessionById, markSessionMediaReady } from "../api/sessions";
 import type { RootStackParamList } from "../navigation/types";
 import { colors } from "../theme/colors";
 import { cardShadow } from "../theme/styles";
@@ -16,7 +16,35 @@ async function requestCallPermissions(video: boolean) {
   if (Platform.OS !== "android") return;
   const permissions = [PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
   if (video) permissions.push(PermissionsAndroid.PERMISSIONS.CAMERA);
-  await PermissionsAndroid.requestMultiple(permissions);
+  const results = await PermissionsAndroid.requestMultiple(permissions);
+  const denied = permissions.some((permission) => results[permission] !== PermissionsAndroid.RESULTS.GRANTED);
+  if (denied) throw new Error("Microphone and camera permissions are required to join the call.");
+}
+
+function parseAgoraUid(value: number | string) {
+  const uid = typeof value === "number" ? value : Number(value.trim());
+  if (!Number.isInteger(uid) || uid < 0 || uid > 0xffffffff) {
+    throw new Error("The call connection details are invalid. Please retry.");
+  }
+  return uid;
+}
+
+function parseTimestamp(value?: string | null) {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function sessionStartTimestamp(session: {
+  liveStartedAt?: string | null;
+  startedAt?: string | null;
+  acceptedAt?: string | null;
+}) {
+  return (
+    parseTimestamp(session.liveStartedAt) ??
+    parseTimestamp(session.startedAt) ??
+    parseTimestamp(session.acceptedAt)
+  );
 }
 
 export function CallScreen({ route, navigation }: Props) {
@@ -28,9 +56,13 @@ export function CallScreen({ route, navigation }: Props) {
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
+  const [partnerName, setPartnerName] = useState("YoPartner");
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(true);
   const [cameraOff, setCameraOff] = useState(false);
+  const joinedRef = useRef(false);
+  const localTimerStartRef = useRef(Date.now());
+  const timerBaseRef = useRef(localTimerStartRef.current);
 
   const engine = useMemo(() => createAgoraRtcEngine(), []);
 
@@ -86,7 +118,11 @@ export function CallScreen({ route, navigation }: Props) {
   };
 
   useEffect(() => {
-    const timer = setInterval(() => setSeconds((current) => current + 1), 1000);
+    const updateTimer = () => {
+      setSeconds(Math.max(0, Math.floor((Date.now() - timerBaseRef.current) / 1000)));
+    };
+    updateTimer();
+    const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -95,15 +131,74 @@ export function CallScreen({ route, navigation }: Props) {
     void (async () => {
       try {
         await requestCallPermissions(video);
-        const tokenResponse = await getSessionAgoraToken(sessionId);
+        console.log("[agora] join attempt", {
+          sessionId,
+          tokenEndpoint: `/api/sessions/${sessionId}/agora-token`,
+          kind,
+        });
+        const [tokenResponse, sessionResponse] = await Promise.all([
+          getSessionAgoraToken(sessionId),
+          getSessionById(sessionId),
+        ]);
         if (!tokenResponse.data) throw new Error(tokenResponse.error?.message || "Could not get Agora token.");
         const token = tokenResponse.data;
-        engine.initialize({ appId: token.appId, channelProfile: ChannelProfileType.ChannelProfileCommunication });
+        const channelName = String(token.channelName ?? "").trim();
+        const uid = parseAgoraUid(token.uid);
+        if (!token.appId?.trim() || !token.token?.trim() || !channelName) {
+          throw new Error("The call connection details are incomplete. Please retry.");
+        }
+
+        const session = sessionResponse.data?.session;
+        if (session) {
+          const startedAt = sessionStartTimestamp(session);
+          if (startedAt) timerBaseRef.current = Math.min(startedAt, Date.now());
+          const name = session.user?.name?.trim() || session.user?.fullName?.trim();
+          if (mounted && name) setPartnerName(name);
+          console.log("[call] session metadata", {
+            sessionId,
+            timerSource: session.liveStartedAt
+              ? "liveStartedAt"
+              : session.startedAt
+                ? "startedAt"
+                : session.acceptedAt
+                  ? "acceptedAt"
+                  : "local",
+            partnerNamePresent: Boolean(name),
+          });
+        } else {
+          console.warn("[call] session metadata unavailable", {
+            sessionId,
+            status: sessionResponse.status,
+            message: sessionResponse.error?.message,
+          });
+        }
+
+        console.log("[agora] credentials ready", {
+          sessionId,
+          channelName,
+          uid,
+          tokenEndpoint: `/api/sessions/${sessionId}/agora-token`,
+        });
+        const initializeResult = engine.initialize({
+          appId: token.appId,
+          channelProfile: ChannelProfileType.ChannelProfileCommunication,
+        });
+        if (initializeResult < 0) {
+          throw new Error(`Agora initialization failed (${initializeResult}).`);
+        }
         engine.registerEventHandler({
-          onJoinChannelSuccess: () => {
+          onJoinChannelSuccess: (connection) => {
             if (!mounted) return;
+            joinedRef.current = true;
             setJoined(true);
             setJoining(false);
+            setError("");
+            engine.setEnableSpeakerphone(true);
+            console.log("[agora] join success", {
+              sessionId,
+              channelName: connection.channelId || channelName,
+              uid: connection.localUid || uid,
+            });
             void markSessionMediaReady(sessionId);
           },
           onUserJoined: (_connection, uid) => {
@@ -112,26 +207,59 @@ export function CallScreen({ route, navigation }: Props) {
           onUserOffline: () => {
             if (mounted) setRemoteUid(null);
           },
-          onError: (_err, msg) => {
-            if (mounted) setError(msg || "Agora call error.");
+          onError: (err, msg) => {
+            console.warn("[agora] SDK error", {
+              code: err,
+              message: msg || null,
+              sessionId,
+              channelName,
+              uid,
+              joinAttemptState: joinedRef.current ? "joined" : "joining",
+            });
+            if (mounted && !joinedRef.current) {
+              setJoining(false);
+              setError("Unable to join call. Please retry.");
+            }
           },
         });
         if (video) engine.enableVideo();
-        engine.setEnableSpeakerphone(true);
-        engine.joinChannel(String(token.token), String(token.channelName), Number(token.uid), {
+        const joinResult = engine.joinChannel(String(token.token), channelName, uid, {
           clientRoleType: ClientRoleType.ClientRoleBroadcaster,
           publishMicrophoneTrack: true,
           publishCameraTrack: video,
           autoSubscribeAudio: true,
           autoSubscribeVideo: video,
         });
+        console.log("[agora] join submitted", {
+          sessionId,
+          channelName,
+          uid,
+          result: joinResult,
+        });
+        if (joinResult < 0) {
+          throw new Error(`Agora join request failed (${joinResult}).`);
+        }
       } catch (callError) {
-        setJoining(false);
-        setError(callError instanceof Error ? callError.message : "Unable to join call.");
+        const message = callError instanceof Error ? callError.message : "Unable to join call.";
+        console.warn("[agora] join failed", {
+          sessionId,
+          tokenEndpoint: `/api/sessions/${sessionId}/agora-token`,
+          joinAttemptState: joinedRef.current ? "joined" : "joining",
+          message,
+        });
+        if (mounted) {
+          setJoining(false);
+          setError(
+            message.startsWith("Microphone") || message.startsWith("The call connection")
+              ? message
+              : "Call connection failed. Please retry.",
+          );
+        }
       }
     })();
     return () => {
       mounted = false;
+      joinedRef.current = false;
       try {
         engine.leaveChannel();
         engine.release();
@@ -139,9 +267,8 @@ export function CallScreen({ route, navigation }: Props) {
         // Ignore cleanup errors.
       }
     };
-  }, [engine, sessionId, video]);
+  }, [engine, kind, sessionId, video]);
 
-  const partnerName = "YoPartner";
   const callStatus = joining ? "Joining securely..." : joined ? "Audio connected" : "Ready";
   const memberStatus = remoteUid ? "Member is connected." : "Waiting for member to join the session.";
   const videoCallStatus = joining ? "Joining securely..." : remoteUid ? "Video connected" : joined ? "Waiting for video..." : "Ready";
