@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Video,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppButton } from "../components/AppButton";
@@ -160,7 +160,10 @@ function toFriendlySubmitApiError(error: ApiError) {
         : message;
 
   if (!error.status && (lowerMessage.includes("network error") || lowerMessage.includes("timeout") || lowerMessage.includes("network request failed"))) {
-    return "Unable to reach YoPartner servers. Please check your internet connection and try again.";
+    return "Unable to reach YoPartner servers.";
+  }
+  if (error.code === "API_BASE_URL_MISSING") {
+    return "App configuration error. API URL missing.";
   }
   if (error.status === 401 || error.status === 403 || lowerMessage.includes("session")) {
     return "Your session has expired. Please log in again and submit once more.";
@@ -188,7 +191,7 @@ function logSafeSubmitFailure(error: ApiError) {
   console.warn("[partner-submit] failed", {
     endpoint: "/api/partner/applications",
     status: error.status ?? "network",
-    code: error.code,
+    networkErrorType: error.code || "unknown",
     message: backendMessage,
   });
 }
@@ -390,7 +393,9 @@ export function OnboardingScreen({ navigation }: Props) {
   const [liveVideo, setLiveVideo] = useState<LocalFile | null>(null);
   const [permissionState, setPermissionState] = useState("Camera and microphone not requested yet.");
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraMounted, setCameraMounted] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraPrepareTimedOut, setCameraPrepareTimedOut] = useState(false);
   const [isRecordingLiveVideo, setIsRecordingLiveVideo] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [errors, setErrors] = useState<ErrorMap>({});
@@ -407,6 +412,18 @@ export function OnboardingScreen({ navigation }: Props) {
   const liveVideoPermissionDenied = cameraPermission?.granted === false || microphonePermission?.granted === false;
   const aboutCharacters = profile.aboutYourself.trim().length;
   const liveScript = `Hello, my name is ${profile.fullName || "{name}"}. I want to become a verified YoPartner host. My details are genuine. I understand YoPartner is a safe and respectful platform.`;
+
+  const remountCamera = useCallback(() => {
+    cameraRef.current = null;
+    setCameraMounted(false);
+    setCameraReady(false);
+    setCameraPrepareTimedOut(false);
+    setPermissionState("Preparing camera...");
+    setCameraSessionKey((current) => current + 1);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setCameraMounted(true));
+    });
+  }, []);
 
   const summaryRows = useMemo(
     () => [
@@ -476,13 +493,10 @@ export function OnboardingScreen({ navigation }: Props) {
     if (step !== 5) return;
     if (isRecordingLiveVideo || liveVideo) return;
 
-    cameraRef.current = null;
-    setCameraReady(false);
     setRecordingSeconds(0);
     recordingInFlightRef.current = false;
     stopRecordingRequestedRef.current = false;
     setErrors((current) => ({ ...current, liveVideo: undefined }));
-    setCameraSessionKey((current) => current + 1);
 
     const cameraGranted = cameraPermission?.granted === true;
     const microphoneGranted = microphonePermission?.granted === true;
@@ -499,15 +513,40 @@ export function OnboardingScreen({ navigation }: Props) {
 
     if (cameraGranted && microphoneGranted) {
       setCameraEnabled(true);
-      setPermissionState("Preparing camera...");
+      remountCamera();
     } else if (cameraDenied || microphoneDenied) {
       setCameraEnabled(false);
+      setCameraMounted(false);
       setPermissionState("Camera or microphone permission denied.");
     } else {
       setCameraEnabled(false);
+      setCameraMounted(false);
       setPermissionState("Camera and microphone not requested yet.");
     }
-  }, [cameraPermission?.granted, isRecordingLiveVideo, liveVideo, microphonePermission?.granted, step]);
+  }, [cameraPermission?.granted, isRecordingLiveVideo, liveVideo, microphonePermission?.granted, remountCamera, step]);
+
+  useEffect(() => {
+    if (step !== 5 || !cameraEnabled || !cameraMounted || cameraReady || liveVideo) return undefined;
+    const timer = setTimeout(() => {
+      setCameraPrepareTimedOut(true);
+      setPermissionState("Camera is still preparing. Tap retry.");
+      console.warn("[partner-live-video] camera readiness timeout", {
+        cameraGranted: cameraPermission?.granted === true,
+        microphoneGranted: microphonePermission?.granted === true,
+        cameraMounted: true,
+        cameraReady: false,
+      });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [
+    cameraEnabled,
+    cameraMounted,
+    cameraPermission?.granted,
+    cameraReady,
+    liveVideo,
+    microphonePermission?.granted,
+    step,
+  ]);
 
   const validateStep = (stepIndex: number): ErrorMap => {
     const nextErrors: ErrorMap = {};
@@ -601,7 +640,17 @@ export function OnboardingScreen({ navigation }: Props) {
       return;
     }
     setCameraEnabled(true);
-    setPermissionState("Camera and microphone ready.");
+    remountCamera();
+  };
+
+  const retryCamera = () => {
+    if (!cameraPermission?.granted || !microphonePermission?.granted) {
+      void enableCamera();
+      return;
+    }
+    setErrors((current) => ({ ...current, liveVideo: undefined }));
+    setCameraEnabled(true);
+    remountCamera();
   };
 
   const uploadRecordedVideo = async (file: NativeKycFile) => {
@@ -730,10 +779,10 @@ export function OnboardingScreen({ navigation }: Props) {
     setErrors({});
     setLiveVideo(null);
     setRecordingSeconds(0);
-    setCameraReady(false);
     recordingInFlightRef.current = false;
     stopRecordingRequestedRef.current = false;
-    setPermissionState(cameraEnabled ? "Camera and microphone ready." : "Camera and microphone not requested yet.");
+    if (cameraEnabled) remountCamera();
+    else setPermissionState("Camera and microphone not requested yet.");
   };
 
   const goBackStep = () => {
@@ -1088,7 +1137,7 @@ export function OnboardingScreen({ navigation }: Props) {
             </View>
           </View>
           <View style={styles.videoPreview}>
-            {cameraEnabled && !liveVideo ? (
+            {cameraEnabled && cameraMounted && !liveVideo ? (
               <View style={styles.cameraFrame}>
                 <CameraView
                   key={cameraSessionKey}
@@ -1100,7 +1149,9 @@ export function OnboardingScreen({ navigation }: Props) {
                   videoQuality="480p"
                   active={step === 5}
                   onCameraReady={() => {
+                    setCameraMounted(true);
                     setCameraReady(true);
+                    setCameraPrepareTimedOut(false);
                     setPermissionState("Camera and microphone ready.");
                     console.log("[partner-live-video] camera ready", {
                       cameraGranted: cameraPermission?.granted === true,
@@ -1110,10 +1161,13 @@ export function OnboardingScreen({ navigation }: Props) {
                   }}
                   onMountError={(event) => {
                     console.warn("[partner-live-video] camera mount failed", event);
-                    setErrors({ liveVideo: "Camera preview could not start. Please try again." });
+                    setCameraReady(false);
+                    setCameraPrepareTimedOut(true);
+                    setPermissionState("Camera is still preparing. Tap retry.");
+                    setErrors({ liveVideo: "Camera preview could not start. Tap Retry Camera." });
                   }}
                 />
-                <View style={styles.cameraScriptOverlay}>
+                <View pointerEvents="none" style={styles.cameraScriptOverlay}>
                   <Text style={styles.cameraScriptLabel}>Read aloud</Text>
                   <Text style={styles.cameraScriptText}>{liveScript}</Text>
                 </View>
@@ -1134,7 +1188,14 @@ export function OnboardingScreen({ navigation }: Props) {
           {liveVideo ? <Text style={liveVideo.uploadError ? styles.errorText : styles.uploadState}>{toUploadStatus(liveVideo)}{liveVideo.uploadError ? `: ${liveVideo.uploadError}` : ""}</Text> : null}
           <View style={styles.videoActions}>
             {!cameraEnabled ? <AppButton title="Enable Camera" onPress={() => void enableCamera()} style={styles.flexButton} /> : null}
-            {cameraEnabled && !isRecordingLiveVideo && !liveVideo ? <AppButton title={cameraReady ? "Start Recording" : "Preparing camera..."} disabled={!cameraReady} onPress={() => void startLiveRecording()} style={styles.flexButton} /> : null}
+            {cameraEnabled && !isRecordingLiveVideo && !liveVideo ? (
+              <AppButton
+                title={cameraReady ? "Start Recording" : cameraPrepareTimedOut ? "Retry Camera" : "Preparing camera..."}
+                disabled={!cameraReady && !cameraPrepareTimedOut}
+                onPress={cameraReady ? () => void startLiveRecording() : retryCamera}
+                style={styles.flexButton}
+              />
+            ) : null}
             {isRecordingLiveVideo ? <AppButton title="Stop Recording" variant="danger" disabled={recordingSeconds < MIN_VIDEO_SECONDS} onPress={stopLiveRecording} style={styles.flexButton} /> : null}
             {liveVideo ? <AppButton title="Record Again" variant="secondary" onPress={recordLiveVideoAgain} style={styles.flexButton} /> : null}
           </View>
